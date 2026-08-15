@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>月間セッション目標管理 | BUG泡瀬店</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BUGセッション管理">
+<meta name="theme-color" content="#1f6feb">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <header class="app-header">
+    <h1>BUG泡瀬店 月間セッション目標管理</h1>
+    <div class="month-nav">
+      <button id="month-nav-prev" class="btn-round" aria-label="前の月">‹</button>
+      <span id="month-nav-label" class="month-nav-label"></span>
+      <button id="month-nav-next" class="btn-round" aria-label="次の月">›</button>
+    </div>
+  </header>
+
+  <section class="summary-panel">
+    <div class="stat-grid">
+      <div class="stat-tile">
+        <div class="stat-label">月間目標</div>
+        <input id="monthly-goal-input" type="number" inputmode="numeric" min="0" class="stat-input">
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">実施済み</div>
+        <div id="stat-done" class="stat-value">0</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">予約済み</div>
+        <div id="stat-booked" class="stat-value">0</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">着地見込み</div>
+        <div id="stat-landing" class="stat-value">0</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">残り必要数</div>
+        <div id="stat-remaining" class="stat-value">0</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">達成率</div>
+        <div id="stat-rate" class="stat-value">0%</div>
+      </div>
+      <div id="stat-goal" class="visually-hidden">0</div>
+    </div>
+
+    <div class="progress-bar"><div id="progress-bar-fill" class="progress-bar-fill"></div></div>
+
+    <div class="detail-row">
+      <div class="detail-item"><span>残り日数</span><strong id="detail-remain-days">-</strong></div>
+      <div class="detail-item"><span>必要な1日平均</span><strong id="detail-per-day">-</strong></div>
+      <div id="detail-forecast" class="forecast">-</div>
+    </div>
+  </section>
+
+  <section id="weekly-summary" class="weekly-panel">
+    <div class="weekly-head">
+      <h2>今週の目標</h2>
+      <span id="week-range-label" class="week-range"></span>
+    </div>
+    <div class="weekly-body">
+      <label class="weekly-goal-field">
+        週目標
+        <input id="week-goal-input" type="number" inputmode="numeric" min="0" class="stat-input small">
+      </label>
+      <div class="weekly-stats">
+        <div class="mstat"><span class="mstat-label">今週実施</span><span id="week-stat-done" class="mstat-value">0</span></div>
+        <div class="mstat"><span class="mstat-label">今週予約</span><span id="week-stat-booked" class="mstat-value">0</span></div>
+        <div class="mstat"><span class="mstat-label">週目標まで</span><span id="week-stat-remaining" class="mstat-value">0</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="members-panel">
+    <div class="members-header">
+      <h2>会員管理</h2>
+      <button id="add-member-btn" class="btn-primary">＋ 会員を追加</button>
+    </div>
+    <div id="members-list" class="members-list"></div>
+  </section>
+
+  <section class="data-tools">
+    <h2>データの保存・復元</h2>
+    <p class="data-tools-desc">データはこの端末のブラウザ内に保存されます。他の端末と共有したり、万一に備えるには、バックアップファイルを書き出してください。</p>
+    <div class="data-tools-buttons">
+      <button id="export-btn" class="btn-secondary">バックアップを保存</button>
+      <label class="btn-secondary file-label">
+        バックアップを読み込む
+        <input id="import-input" type="file" accept="application/json" class="visually-hidden">
+      </label>
+      <button id="reset-btn" class="btn-danger">全データを初期化</button>
+    </div>
+  </section>
+
+  <footer class="app-footer">
+    <p>BUG泡瀬店 専用ツール ・ データは端末内に保存されます</p>
+  </footer>
+</div>
+
+<!-- 会員 追加/編集 モーダル -->
+<div id="member-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3 id="member-form-title">会員を追加</h3>
+    <form id="member-form">
+      <input type="hidden" id="member-id">
+      <label>会員名
+        <input id="member-name" type="text" required placeholder="例）山田 太郎">
+      </label>
+      <label>週の目標頻度（週◯回）
+        <input id="member-weekly-freq" type="number" inputmode="numeric" min="0" required>
+      </label>
+      <label>月の目標セッション数
+        <input id="member-monthly-goal" type="number" inputmode="numeric" min="0" required>
+      </label>
+      <label>契約残りセッション数
+        <input id="member-remaining-contract" type="number" inputmode="numeric" min="0" required>
+      </label>
+      <label>メモ
+        <textarea id="member-memo" rows="3" placeholder="体調・要望・食事メモなど"></textarea>
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="member-cancel-btn" class="btn-secondary">キャンセル</button>
+        <button type="submit" class="btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 予約 追加 モーダル -->
+<div id="booking-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>予約日を追加</h3>
+    <form id="booking-form">
+      <input type="hidden" id="booking-member-id">
+      <label>予約日
+        <input id="booking-date" type="date" required>
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="booking-cancel-btn" class="btn-secondary">キャンセル</button>
+        <button type="submit" class="btn-primary">追加</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 確認 モーダル -->
+<div id="confirm-modal" class="modal hidden">
+  <div class="modal-box">
+    <p id="confirm-message"></p>
+    <div class="modal-actions">
+      <button type="button" id="confirm-cancel-btn" class="btn-secondary">キャンセル</button>
+      <button type="button" id="confirm-ok-btn" class="btn-danger">実行</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js" defer></script>
+</body>
+</html>
