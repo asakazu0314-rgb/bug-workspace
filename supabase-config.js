@@ -8,6 +8,6 @@
 // ただし service_role キー（管理者用の強い権限を持つキー）は絶対にここに書かないでください。
 
 window.SUPABASE_CONFIG = {
-  url: 'YOUR_SUPABASE_URL',
-  anonKey: 'YOUR_SUPABASE_ANON_KEY',
+  url: 'https://rnkucsdsdwyjxevxwmcl.supabase.co',
+  anonKey: 'sb_publishable_jnKFKZpuqrjB1Psp3pljEA_lquY5M-D',
 };
