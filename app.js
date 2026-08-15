@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const STORAGE_KEY = 'bug_session_goal_app_v1';
+  const LOCAL_SETTINGS_KEY = 'bug_session_goal_app_v1';
   const DEFAULT_MONTHLY_GOAL = 120;
   const DEFAULT_WEEKLY_GOAL = 28;
 
@@ -83,48 +83,82 @@
     return dateStr >= startStr && dateStr <= endStr;
   }
 
-  function genId() {
-    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-    return 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2);
-  }
-
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str == null ? '' : String(str);
     return div.innerHTML;
   }
 
-  // ---------- storage ----------
-  function defaultData() {
-    return {
-      members: [],
-      monthlyGoalByMonth: {},
-      weeklyGoalByWeek: {},
-      log: [],
-    };
+  // ---------- local settings (店舗全体の月間/週間目標のみ。会員データはSupabaseへ) ----------
+  function defaultLocalSettings() {
+    return { monthlyGoalByMonth: {}, weeklyGoalByWeek: {} };
   }
 
-  function loadData() {
+  function loadLocalSettings() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return defaultData();
+      const raw = localStorage.getItem(LOCAL_SETTINGS_KEY);
+      if (!raw) return defaultLocalSettings();
       const parsed = JSON.parse(raw);
-      return Object.assign(defaultData(), parsed);
+      return {
+        monthlyGoalByMonth: parsed.monthlyGoalByMonth || {},
+        weeklyGoalByWeek: parsed.weeklyGoalByWeek || {},
+      };
     } catch (e) {
-      console.error('データの読み込みに失敗しました', e);
-      return defaultData();
+      console.error('設定の読み込みに失敗しました', e);
+      return defaultLocalSettings();
     }
   }
 
-  function saveData() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+  function saveLocalSettings() {
+    localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(state.settings));
   }
 
   // ---------- state ----------
   const state = {
-    data: loadData(),
+    settings: loadLocalSettings(),
+    data: { members: [], log: [] },
     viewMonthKey: todayMonthKey(),
+    busy: false,
   };
+
+  // ---------- Supabase client ----------
+  let supabase = null;
+
+  function supabaseConfigured() {
+    const cfg = window.SUPABASE_CONFIG;
+    return !!(cfg && cfg.url && cfg.anonKey && !cfg.url.includes('YOUR_SUPABASE') && !cfg.anonKey.includes('YOUR_SUPABASE'));
+  }
+
+  function initSupabaseClient() {
+    const cfg = window.SUPABASE_CONFIG;
+    supabase = window.supabase.createClient(cfg.url, cfg.anonKey);
+  }
+
+  // ---------- row <-> app model mapping ----------
+  function memberFromRow(row) {
+    return {
+      id: row.id,
+      name: row.name,
+      weeklyFreq: row.weekly_sessions || 0,
+      monthlyGoal: row.monthly_target || 0,
+      remainingContract: row.remaining_contract || 0,
+      memo: row.memo || '',
+    };
+  }
+
+  function memberToRow(m) {
+    return {
+      name: m.name,
+      weekly_sessions: m.weeklyFreq,
+      monthly_target: m.monthlyGoal,
+      remaining_contract: m.remainingContract,
+      memo: m.memo,
+    };
+  }
+
+  function logFromRow(row) {
+    return { id: row.id, memberId: row.member_id, date: row.session_date, type: row.type };
+  }
 
   // ---------- goal resolution (carry forward from most recent prior entry) ----------
   function resolveGoal(map, key, sortedKeysAsc, fallback) {
@@ -137,13 +171,13 @@
   }
 
   function monthlyGoalFor(monthKey) {
-    const keys = Object.keys(state.data.monthlyGoalByMonth).sort();
-    return resolveGoal(state.data.monthlyGoalByMonth, monthKey, keys, DEFAULT_MONTHLY_GOAL);
+    const keys = Object.keys(state.settings.monthlyGoalByMonth).sort();
+    return resolveGoal(state.settings.monthlyGoalByMonth, monthKey, keys, DEFAULT_MONTHLY_GOAL);
   }
 
   function weeklyGoalFor(weekKey) {
-    const keys = Object.keys(state.data.weeklyGoalByWeek).sort();
-    return resolveGoal(state.data.weeklyGoalByWeek, weekKey, keys, DEFAULT_WEEKLY_GOAL);
+    const keys = Object.keys(state.settings.weeklyGoalByWeek).sort();
+    return resolveGoal(state.settings.weeklyGoalByWeek, weekKey, keys, DEFAULT_WEEKLY_GOAL);
   }
 
   // ---------- aggregation ----------
@@ -176,6 +210,79 @@
       .map((e) => e.date)
       .sort();
     return dates.length ? dates[0] : null;
+  }
+
+  // ---------- Supabase data access ----------
+  async function fetchAll() {
+    const [membersRes, logsRes] = await Promise.all([
+      supabase.from('members').select('*').order('created_at', { ascending: true }),
+      supabase.from('session_logs').select('*'),
+    ]);
+    if (membersRes.error) throw membersRes.error;
+    if (logsRes.error) throw logsRes.error;
+    state.data.members = membersRes.data.map(memberFromRow);
+    state.data.log = logsRes.data.map(logFromRow);
+  }
+
+  // 今月分の実施・予約件数を members.completed_sessions / booked_sessions に反映する
+  // （画面はログから直接集計するため必須ではないが、Supabase側のテーブルを直接見たときも
+  //   常に「今月の値」が表示されるようにするための同期処理）
+  async function syncMemberCounts(memberId) {
+    const monthKey = todayMonthKey();
+    const done = doneInMonth(memberId, monthKey);
+    const booked = bookedInMonth(memberId, monthKey);
+    const { error } = await supabase
+      .from('members')
+      .update({ completed_sessions: done, booked_sessions: booked })
+      .eq('id', memberId);
+    if (error) throw error;
+  }
+
+  async function reconcileAllMemberCounts() {
+    const monthKey = todayMonthKey();
+    for (const m of state.data.members) {
+      const done = doneInMonth(m.id, monthKey);
+      const booked = bookedInMonth(m.id, monthKey);
+      await supabase.from('members').update({ completed_sessions: done, booked_sessions: booked }).eq('id', m.id);
+    }
+  }
+
+  async function createMember(payload) {
+    const { data, error } = await supabase.from('members').insert(memberToRow(payload)).select().single();
+    if (error) throw error;
+    state.data.members.push(memberFromRow(data));
+  }
+
+  async function updateMemberRow(id, payload) {
+    const { error } = await supabase.from('members').update(memberToRow(payload)).eq('id', id);
+    if (error) throw error;
+    const m = state.data.members.find((x) => x.id === id);
+    Object.assign(m, payload);
+  }
+
+  async function deleteMemberRow(id) {
+    const { error } = await supabase.from('members').delete().eq('id', id);
+    if (error) throw error;
+    state.data.members = state.data.members.filter((m) => m.id !== id);
+    state.data.log = state.data.log.filter((e) => e.memberId !== id);
+  }
+
+  async function insertLog(memberId, date, type) {
+    const { data, error } = await supabase
+      .from('session_logs')
+      .insert({ member_id: memberId, session_date: date, type })
+      .select()
+      .single();
+    if (error) throw error;
+    state.data.log.push(logFromRow(data));
+    await syncMemberCounts(memberId);
+  }
+
+  async function deleteLogRow(logId, memberId) {
+    const { error } = await supabase.from('session_logs').delete().eq('id', logId);
+    if (error) throw error;
+    state.data.log = state.data.log.filter((e) => e.id !== logId);
+    await syncMemberCounts(memberId);
   }
 
   // ---------- rendering ----------
@@ -310,47 +417,62 @@
     list.innerHTML = state.data.members.map(memberCardHtml).join('');
   }
 
+  // ---------- busy guard & error banner ----------
+  async function withBusyGuard(fn) {
+    if (state.busy) return;
+    state.busy = true;
+    try {
+      await fn();
+    } catch (err) {
+      console.error(err);
+      showErrorBanner('通信に失敗しました。ネットワーク接続を確認してもう一度お試しください。（' + (err.message || err) + '）');
+    } finally {
+      state.busy = false;
+    }
+  }
+
+  function showErrorBanner(message) {
+    $('#error-message').textContent = message;
+    $('#error-banner').classList.remove('hidden');
+  }
+
+  function hideErrorBanner() {
+    $('#error-banner').classList.add('hidden');
+  }
+
   // ---------- actions ----------
-  function addDoneToday(memberId) {
-    state.data.log.push({ id: genId(), memberId, date: todayISO(), type: 'done' });
-    saveData();
+  async function addDoneToday(memberId) {
+    await insertLog(memberId, todayISO(), 'done');
     render();
   }
 
-  function removeLastDone(memberId) {
-    const idx = [...state.data.log]
-      .map((e, i) => ({ e, i }))
-      .filter(({ e }) => e.memberId === memberId && e.type === 'done')
-      .map(({ i }) => i)
-      .pop();
-    if (idx === undefined) return;
-    state.data.log.splice(idx, 1);
-    saveData();
+  async function removeLastDone(memberId) {
+    const candidates = state.data.log
+      .filter((e) => e.memberId === memberId && e.type === 'done')
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+    if (candidates.length === 0) return;
+    const last = candidates[candidates.length - 1];
+    await deleteLogRow(last.id, memberId);
     render();
   }
 
-  function removeNextBooking(memberId) {
+  async function removeNextBooking(memberId) {
     const today = todayISO();
     const candidates = state.data.log
-      .map((e, i) => ({ e, i }))
-      .filter(({ e }) => e.memberId === memberId && e.type === 'booked' && e.date >= today)
-      .sort((a, b) => (a.e.date < b.e.date ? -1 : 1));
+      .filter((e) => e.memberId === memberId && e.type === 'booked' && e.date >= today)
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
     if (candidates.length === 0) return;
-    state.data.log.splice(candidates[0].i, 1);
-    saveData();
+    await deleteLogRow(candidates[0].id, memberId);
     render();
   }
 
-  function addBooking(memberId, dateStr) {
-    state.data.log.push({ id: genId(), memberId, date: dateStr, type: 'booked' });
-    saveData();
+  async function addBooking(memberId, dateStr) {
+    await insertLog(memberId, dateStr, 'booked');
     render();
   }
 
-  function deleteMember(memberId) {
-    state.data.members = state.data.members.filter((m) => m.id !== memberId);
-    state.data.log = state.data.log.filter((e) => e.memberId !== memberId);
-    saveData();
+  async function deleteMember(memberId) {
+    await deleteMemberRow(memberId);
     render();
   }
 
@@ -404,33 +526,34 @@
 
     $('#monthly-goal-input').addEventListener('change', (e) => {
       const v = Math.max(0, parseInt(e.target.value, 10) || 0);
-      state.data.monthlyGoalByMonth[state.viewMonthKey] = v;
-      saveData();
+      state.settings.monthlyGoalByMonth[state.viewMonthKey] = v;
+      saveLocalSettings();
       render();
     });
 
     $('#week-goal-input').addEventListener('change', (e) => {
       const v = Math.max(0, parseInt(e.target.value, 10) || 0);
       const range = currentWeekRange();
-      state.data.weeklyGoalByWeek[range.key] = v;
-      saveData();
+      state.settings.weeklyGoalByWeek[range.key] = v;
+      saveLocalSettings();
       render();
     });
 
     $('#members-list').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-action]');
       if (!btn) return;
-      const { action, id } = btn.dataset;
+      const { action } = btn.dataset;
+      const id = Number(btn.dataset.id);
       const member = state.data.members.find((m) => m.id === id);
       if (!member) return;
-      if (action === 'done-plus') addDoneToday(id);
-      else if (action === 'done-minus') removeLastDone(id);
+      if (action === 'done-plus') withBusyGuard(() => addDoneToday(id));
+      else if (action === 'done-minus') withBusyGuard(() => removeLastDone(id));
       else if (action === 'booked-plus') openBookingForm(id);
-      else if (action === 'booked-minus') removeNextBooking(id);
+      else if (action === 'booked-minus') withBusyGuard(() => removeNextBooking(id));
       else if (action === 'edit-member') openMemberForm(member);
       else if (action === 'delete-member') {
-        openConfirm(`「${member.name}」を削除します。よろしいですか？（記録もすべて削除されます）`, () =>
-          deleteMember(id)
+        openConfirm(`「${member.name}」を削除します。よろしいですか？（Supabase上の記録もすべて削除されます）`, () =>
+          withBusyGuard(() => deleteMember(id))
         );
       }
     });
@@ -440,7 +563,8 @@
 
     $('#member-form').addEventListener('submit', (e) => {
       e.preventDefault();
-      const id = $('#member-id').value;
+      const idRaw = $('#member-id').value;
+      const id = idRaw ? Number(idRaw) : null;
       const payload = {
         name: $('#member-name').value.trim() || '名称未設定',
         weeklyFreq: Math.max(0, parseInt($('#member-weekly-freq').value, 10) || 0),
@@ -448,24 +572,30 @@
         remainingContract: Math.max(0, parseInt($('#member-remaining-contract').value, 10) || 0),
         memo: $('#member-memo').value.trim(),
       };
-      if (id) {
-        const m = state.data.members.find((x) => x.id === id);
-        Object.assign(m, payload);
-      } else {
-        state.data.members.push({ id: genId(), ...payload });
-      }
-      saveData();
-      closeModal('#member-modal');
-      render();
+      withBusyGuard(async () => {
+        if (id) {
+          await updateMemberRow(id, payload);
+        } else {
+          await createMember(payload);
+        }
+        closeModal('#member-modal');
+        render();
+      });
     });
 
     $('#booking-cancel-btn').addEventListener('click', () => closeModal('#booking-modal'));
     $('#booking-form').addEventListener('submit', (e) => {
       e.preventDefault();
-      const memberId = $('#booking-member-id').value;
+      const memberId = Number($('#booking-member-id').value);
       const date = $('#booking-date').value;
-      if (date) addBooking(memberId, date);
-      closeModal('#booking-modal');
+      if (!date) {
+        closeModal('#booking-modal');
+        return;
+      }
+      withBusyGuard(async () => {
+        await addBooking(memberId, date);
+        closeModal('#booking-modal');
+      });
     });
 
     $('#confirm-cancel-btn').addEventListener('click', () => {
@@ -476,6 +606,12 @@
       if (confirmCallback) confirmCallback();
       confirmCallback = null;
       closeModal('#confirm-modal');
+    });
+
+    $('#error-close-btn').addEventListener('click', hideErrorBanner);
+    $('#error-retry-btn').addEventListener('click', () => {
+      hideErrorBanner();
+      init();
     });
 
     $('#export-btn').addEventListener('click', () => {
@@ -497,11 +633,23 @@
       reader.onload = () => {
         try {
           const parsed = JSON.parse(reader.result);
-          openConfirm('現在のデータを、読み込んだファイルの内容で上書きします。よろしいですか？', () => {
-            state.data = Object.assign(defaultData(), parsed);
-            saveData();
-            render();
-          });
+          const members = Array.isArray(parsed.members) ? parsed.members : [];
+          openConfirm(
+            `バックアップファイル内の会員 ${members.length} 名を、新しい会員として追加します（上書きではありません）。よろしいですか？`,
+            () =>
+              withBusyGuard(async () => {
+                for (const m of members) {
+                  await createMember({
+                    name: m.name,
+                    weeklyFreq: m.weeklyFreq || 0,
+                    monthlyGoal: m.monthlyGoal || 0,
+                    remainingContract: m.remainingContract || 0,
+                    memo: m.memo || '',
+                  });
+                }
+                render();
+              })
+          );
         } catch (err) {
           alert('ファイルの読み込みに失敗しました。正しいバックアップファイルを選択してください。');
         }
@@ -511,14 +659,56 @@
     });
 
     $('#reset-btn').addEventListener('click', () => {
-      openConfirm('すべてのデータを削除して初期状態に戻します。この操作は取り消せません。よろしいですか？', () => {
-        state.data = defaultData();
-        saveData();
-        render();
-      });
+      openConfirm(
+        '全会員のデータをSupabaseから完全に削除します。この操作は他の端末にも影響し、元に戻せません。本当によろしいですか？',
+        () =>
+          withBusyGuard(async () => {
+            for (const m of [...state.data.members]) {
+              await deleteMemberRow(m.id);
+            }
+            render();
+          })
+      );
     });
   }
 
+  // ---------- init ----------
+  function showLoading(show) {
+    $('#loading-overlay').classList.toggle('hidden', !show);
+  }
+
+  async function init() {
+    hideErrorBanner();
+
+    if (!window.supabase || !window.supabase.createClient) {
+      showErrorBanner('Supabaseライブラリの読み込みに失敗しました。インターネット接続を確認してページを再読み込みしてください。');
+      return;
+    }
+
+    if (!supabaseConfigured()) {
+      $('#setup-banner').classList.remove('hidden');
+      showLoading(false);
+      return;
+    }
+    $('#setup-banner').classList.add('hidden');
+
+    showLoading(true);
+    try {
+      if (!supabase) initSupabaseClient();
+      await fetchAll();
+      render();
+      showLoading(false);
+      // 月が変わったタイミングなどで会員テーブルの表示用カウントを最新化する（裏側で実行）
+      reconcileAllMemberCounts()
+        .then(render)
+        .catch((err) => console.error('カウントの再集計に失敗しました', err));
+    } catch (err) {
+      console.error(err);
+      showLoading(false);
+      showErrorBanner('Supabaseへの接続に失敗しました。URLとキーが正しいかご確認ください。（' + (err.message || err) + '）');
+    }
+  }
+
   wireEvents();
-  render();
+  init();
 })();

@@ -358,6 +358,51 @@ html, body {
   margin-top: 30px;
 }
 
+/* banners */
+.banner {
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin: 14px 0;
+}
+.banner.hidden { display: none; }
+.banner h2 { margin: 0 0 6px; font-size: 1rem; }
+.banner p { margin: 0; font-size: 0.9rem; line-height: 1.5; }
+.banner code {
+  background: rgba(0,0,0,0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+.banner-setup {
+  background: #fff7e6;
+  border: 1px solid #f0d999;
+  color: #6b5210;
+}
+.banner-error {
+  background: #fdecea;
+  border: 1px solid #f3c6c1;
+  color: var(--warn);
+}
+.banner-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* loading overlay */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+}
+.loading-overlay.hidden { display: none; }
+
 /* modals */
 .modal {
   position: fixed;

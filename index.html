@@ -16,6 +16,19 @@
 <body>
 <div id="app">
 
+  <div id="setup-banner" class="banner banner-setup hidden">
+    <h2>Supabaseの接続設定が必要です</h2>
+    <p>会員データをSupabaseで読み書きするには、<code>supabase-config.js</code> にプロジェクトのURLと匿名キー（anon key）を入力してください。取得方法はREADMEをご覧ください。</p>
+  </div>
+
+  <div id="error-banner" class="banner banner-error hidden">
+    <p id="error-message"></p>
+    <div class="banner-actions">
+      <button id="error-retry-btn" class="btn-secondary">再読み込み</button>
+      <button id="error-close-btn" class="btn-link">閉じる</button>
+    </div>
+  </div>
+
   <header class="app-header">
     <h1>BUG泡瀬店 月間セッション目標管理</h1>
     <div class="month-nav">
@@ -91,20 +104,24 @@
 
   <section class="data-tools">
     <h2>データの保存・復元</h2>
-    <p class="data-tools-desc">データはこの端末のブラウザ内に保存されます。他の端末と共有したり、万一に備えるには、バックアップファイルを書き出してください。</p>
+    <p class="data-tools-desc">会員データはSupabase（クラウド）に保存され、複数の端末で共有されます。月間・週間の目標数値だけはこの端末のブラウザ内に保存されます。念のためのバックアップファイルも書き出せます。</p>
     <div class="data-tools-buttons">
       <button id="export-btn" class="btn-secondary">バックアップを保存</button>
       <label class="btn-secondary file-label">
-        バックアップを読み込む
+        バックアップから追加
         <input id="import-input" type="file" accept="application/json" class="visually-hidden">
       </label>
-      <button id="reset-btn" class="btn-danger">全データを初期化</button>
+      <button id="reset-btn" class="btn-danger">全会員データを削除</button>
     </div>
   </section>
 
   <footer class="app-footer">
-    <p>BUG泡瀬店 専用ツール ・ データは端末内に保存されます</p>
+    <p>BUG泡瀬店 専用ツール ・ 会員データはSupabaseに保存されます</p>
   </footer>
+</div>
+
+<div id="loading-overlay" class="loading-overlay hidden">
+  <p>読み込み中…</p>
 </div>
 
 <!-- 会員 追加/編集 モーダル -->
@@ -164,6 +181,8 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" defer></script>
+<script src="supabase-config.js" defer></script>
 <script src="app.js" defer></script>
 </body>
 </html>
