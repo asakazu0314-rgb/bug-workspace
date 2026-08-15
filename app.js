@@ -160,6 +160,26 @@
     return { id: row.id, memberId: row.member_id, date: row.session_date, type: row.type };
   }
 
+  const FIELD_LABELS = {
+    name: '会員名',
+    weekly_sessions: '週の目標頻度',
+    monthly_target: '月の目標セッション数',
+    remaining_contract: '契約残りセッション数',
+    memo: 'メモ',
+  };
+
+  // 送信した内容とSupabaseが実際に保存した内容を突き合わせ、ズレがあれば警告する
+  // （スキーマキャッシュが古いままだと、エラーにならずに一部の列だけ既定値で
+  //   保存されてしまうことがあるため、その状態を画面上で見逃さないようにする）
+  function warnIfMismatch(sentRow, savedRow) {
+    const mismatched = Object.keys(sentRow).filter((key) => sentRow[key] !== savedRow[key]);
+    if (mismatched.length === 0) return;
+    const labels = mismatched.map((k) => FIELD_LABELS[k] || k).join('、');
+    showErrorBanner(
+      `保存はできましたが、一部の項目（${labels}）がSupabaseに反映されていない可能性があります。Supabaseダッシュボードの「Project Settings → Data API」→「Reload schema cache」を実行してから、もう一度保存し直してください。`
+    );
+  }
+
   // ---------- goal resolution (carry forward from most recent prior entry) ----------
   function resolveGoal(map, key, sortedKeysAsc, fallback) {
     if (map[key] !== undefined) return map[key];
@@ -248,16 +268,22 @@
   }
 
   async function createMember(payload) {
-    const { data, error } = await supabase.from('members').insert(memberToRow(payload)).select().single();
+    const rowToSend = memberToRow(payload);
+    const { data, error } = await supabase.from('members').insert(rowToSend).select().single();
     if (error) throw error;
+    if (!data) throw new Error('会員の保存確認に失敗しました（Supabaseからの応答が空でした）');
     state.data.members.push(memberFromRow(data));
+    warnIfMismatch(rowToSend, data);
   }
 
   async function updateMemberRow(id, payload) {
-    const { error } = await supabase.from('members').update(memberToRow(payload)).eq('id', id);
+    const rowToSend = memberToRow(payload);
+    const { data, error } = await supabase.from('members').update(rowToSend).eq('id', id).select().single();
     if (error) throw error;
+    if (!data) throw new Error('会員情報の更新確認に失敗しました（Supabaseからの応答が空でした）');
     const m = state.data.members.find((x) => x.id === id);
-    Object.assign(m, payload);
+    Object.assign(m, memberFromRow(data));
+    warnIfMismatch(rowToSend, data);
   }
 
   async function deleteMemberRow(id) {
