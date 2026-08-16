@@ -22,11 +22,21 @@ html, body {
   -webkit-text-size-adjust: 100%;
 }
 
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
 #app {
+  order: 0;
   max-width: 1000px;
+  width: 100%;
   margin: 0 auto;
   padding: 16px 16px 48px;
 }
+
+.app-view.hidden { display: none; }
 
 .visually-hidden {
   position: absolute;
@@ -367,15 +377,75 @@ html, body {
 .tally-count { font-size: 0.78rem; color: var(--text-muted); flex-shrink: 0; }
 .cal-overview-empty { font-size: 0.85rem; color: var(--text-muted); margin: 0; padding: 4px 0; }
 
-/* members panel */
-.members-panel { margin: 20px 0; }
-.members-header {
+/* 検索パネル（ダッシュボード） */
+.search-panel { margin: 14px 0; }
+.search-input {
+  width: 100%;
+  font-size: 1rem;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg);
+  color: var(--text);
+  font-family: inherit;
+}
+.search-results {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.search-results.hidden { display: none; }
+.search-result-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--card-bg);
+  border: none;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-family: inherit;
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.search-result-row:active { background: var(--bg); }
+.search-result-name { font-size: 1rem; font-weight: 700; margin-bottom: 2px; }
+.search-result-line { font-size: 0.82rem; color: var(--text-muted); }
+
+/* 会員一覧 ツールバー */
+.members-toolbar { margin: 14px 0 12px; }
+.members-toolbar-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
+  gap: 10px;
 }
-.members-header h2 { margin: 0; font-size: 1.1rem; }
+.members-toolbar-head h2 { margin: 0; font-size: 1.1rem; }
+.members-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex: 1;
+  min-width: 130px;
+}
+.filter-field select {
+  font-size: 0.88rem;
+  padding: 9px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text);
+  font-family: inherit;
+}
 
 .members-list {
   display: grid;
@@ -388,54 +458,105 @@ html, body {
 
 .empty-msg { color: var(--text-muted); text-align: center; padding: 24px 0; }
 
-.member-card {
+/* 会員カード（概要・会員一覧タブ用） */
+.mcard {
+  display: block;
+  width: 100%;
+  text-align: left;
   background: var(--card-bg);
+  border: none;
   border-radius: var(--radius);
   padding: 14px 16px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  font-family: inherit;
+  color: var(--text);
 }
-.member-card-head {
+.mcard:active { background: var(--bg); }
+.mcard-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
 }
-.member-name { font-size: 1.1rem; font-weight: 700; }
-.member-badge {
-  background: var(--bg);
-  color: var(--text-muted);
-  font-size: 0.8rem;
+.mcard-name { font-size: 1.05rem; font-weight: 700; }
+.mcard-status {
+  font-size: 0.72rem;
+  font-weight: 600;
   padding: 3px 10px;
   border-radius: 999px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
+.status-achieved { background: rgba(26,138,74,0.12); color: var(--good); }
+.status-ontrack { background: rgba(31,111,235,0.12); color: var(--primary-dark); }
+.status-short { background: rgba(192,57,43,0.1); color: var(--warn); }
 
-.member-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
+.mcard-course { font-size: 0.85rem; color: var(--primary-dark); font-weight: 600; margin-top: 4px; }
+.mcard-sub { font-size: 0.82rem; color: var(--text-muted); margin-top: 2px; }
+
+.mcard-month {
   margin-top: 10px;
-}
-
-.member-meta {
-  margin-top: 10px;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.member-memo { white-space: pre-wrap; word-break: break-word; }
-
-/* booking list */
-.booking-section {
-  margin-top: 12px;
-  padding-top: 12px;
+  padding-top: 10px;
   border-top: 1px solid var(--border);
 }
-.booking-section-title {
+.mcard-month-title { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px; }
+.mcard-month-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.mcard-month-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.mcard-month-item strong { font-size: 0.95rem; color: var(--text); font-weight: 700; }
+
+.mcard-rate { margin-top: 10px; font-size: 0.85rem; color: var(--text-muted); }
+.mcard-rate strong { color: var(--primary-dark); font-size: 1rem; }
+.mcard-next { margin-top: 4px; font-size: 0.85rem; color: var(--text-muted); }
+
+/* 会員詳細モーダル */
+.detail-modal-box { max-width: 480px; }
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.detail-header h3 { margin: 0; }
+.detail-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.detail-section h4 {
+  margin: 0 0 8px;
   font-size: 0.8rem;
   color: var(--text-muted);
-  margin-bottom: 6px;
+  font-weight: 600;
 }
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 12px;
+}
+.detail-grid-item { display: flex; flex-direction: column; gap: 2px; }
+.detail-grid-item span { font-size: 0.72rem; color: var(--text-muted); }
+.detail-grid-item strong { font-size: 0.95rem; }
+.detail-memo {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.detail-section .mini-calendar { margin-top: 0; padding-top: 0; border-top: none; }
+.detail-footer-actions { flex-wrap: wrap; justify-content: flex-end; }
+
+/* 予約日程一覧 */
 .booking-list {
   max-height: 150px;
   overflow-y: auto;
@@ -447,7 +568,8 @@ html, body {
 .booking-row {
   display: flex;
   align-items: center;
-  padding: 6px 0;
+  justify-content: space-between;
+  padding: 8px 0;
   font-size: 0.85rem;
   border-bottom: 1px solid var(--border);
 }
@@ -456,18 +578,9 @@ html, body {
   content: '●';
   margin-right: 8px;
   font-size: 0.7rem;
+  color: var(--primary);
 }
-.booking-row.is-future { color: var(--text); }
-.booking-row.is-future::before { color: var(--primary); }
-.booking-row.is-past { color: var(--text-muted); }
-.booking-row.is-past::before { color: var(--text-muted); opacity: 0.6; }
-.booking-divider {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  padding: 8px 0 4px;
-  margin-top: 2px;
-  border-top: 1px dashed var(--border);
-}
+.booking-time { font-size: 0.8rem; color: var(--text-muted); }
 .booking-empty {
   font-size: 0.85rem;
   color: var(--text-muted);
@@ -557,13 +670,6 @@ html, body {
 }
 .counter-label { font-size: 0.8rem; color: var(--text-muted); }
 
-.member-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
-}
-
 /* data tools */
 .data-tools {
   background: var(--card-bg);
@@ -641,6 +747,8 @@ html, body {
   z-index: 50;
 }
 .modal.hidden { display: none; }
+/* 会員詳細・日別詳細モーダルの上から開く操作用モーダルは、常に手前に表示する */
+#member-modal, #booking-modal, #confirm-modal { z-index: 55; }
 
 .modal-box {
   background: #fff;
@@ -671,7 +779,20 @@ html, body {
   background: var(--bg);
 }
 .day-detail-time { font-size: 0.8rem; color: var(--text-muted); min-width: 3.6em; flex-shrink: 0; }
-.day-detail-name { flex: 1; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.day-detail-name {
+  flex: 1;
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text);
+}
+button.day-detail-name { color: var(--primary-dark); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .day-detail-badge {
   font-size: 0.72rem;
   padding: 3px 9px;
@@ -694,13 +815,14 @@ html, body {
   font-size: 0.85rem;
   color: var(--text-muted);
 }
-#member-form input, #member-form textarea, #booking-form input {
+#member-form input, #member-form textarea, #member-form select, #booking-form input {
   font-size: 1rem;
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
   font-family: inherit;
+  background: #fff;
 }
 
 .modal-actions {
@@ -708,6 +830,55 @@ html, body {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 6px;
+}
+
+/* タブナビゲーション */
+.app-tabs {
+  order: 1;
+  display: flex;
+  background: var(--card-bg);
+  border-top: 1px solid var(--border);
+}
+.app-tab {
+  flex: 1;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 10px 4px 8px;
+  min-height: 44px;
+}
+.app-tab.active { color: var(--primary); }
+
+@media (max-width: 639px) {
+  .app-tabs {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -1px 4px rgba(0,0,0,0.08);
+    z-index: 40;
+  }
+  #app { padding-bottom: 78px; }
+}
+
+@media (min-width: 640px) {
+  .app-tabs {
+    order: -1;
+    position: sticky;
+    top: 0;
+    max-width: 1000px;
+    margin: 0 auto;
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    z-index: 40;
+  }
+  .app-tab { padding: 12px 4px; font-size: 0.85rem; }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -720,7 +891,7 @@ html, body {
   }
   .btn-secondary { background: #1e2126; color: var(--text); }
   .modal-box { background: #1e2126; }
-  #member-form input, #member-form textarea, #booking-form input {
+  #member-form input, #member-form textarea, #member-form select, #booking-form input {
     background: #14161a;
     color: var(--text);
   }

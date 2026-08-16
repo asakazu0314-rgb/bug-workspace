@@ -29,6 +29,11 @@ create index if not exists session_logs_date_idx on public.session_logs (session
 alter table public.session_logs
   add column if not exists session_time time;
 
+-- 2-2) 会員の「コース」（契約セッション数の区分）を記録できるように列を追加します
+--      値は 8 / 24 / 48 を想定していますが、列自体はどの数値も許容します（空でも構いません）
+alter table public.members
+  add column if not exists course_sessions int8;
+
 -- 3) Row Level Security（行レベルセキュリティ）を有効化します
 --    このアプリはログイン機能を持たないため、匿名キー(anon key)からの読み書きを許可します。
 --    ※ URLとanonキーを知っている人なら誰でもデータの閲覧・変更ができる状態になる点にご注意ください。

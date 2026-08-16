@@ -5,6 +5,8 @@
   const DEFAULT_MONTHLY_GOAL = 120;
   const DEFAULT_WEEKLY_GOAL = 28;
   const WEEKDAYS_JA = ['日', '月', '火', '水', '木', '金', '土'];
+  const COURSE_LABELS = { 8: '8回コース', 24: '24回コース', 48: '48回コース' };
+  const STATUS_LABELS = { achieved: '達成', ontrack: '順調', short: '不足' };
 
   // ---------- date helpers ----------
   const pad2 = (n) => String(n).padStart(2, '0');
@@ -89,6 +91,10 @@
     return div.innerHTML;
   }
 
+  function courseLabel(course) {
+    return course ? COURSE_LABELS[course] || `${course}回コース` : '未設定';
+  }
+
   // ---------- local settings (店舗全体の月間/週間目標のみ。会員データはSupabaseへ) ----------
   function defaultLocalSettings() {
     return { monthlyGoalByMonth: {}, weeklyGoalByWeek: {} };
@@ -118,7 +124,11 @@
     settings: loadLocalSettings(),
     data: { members: [], log: [] },
     viewMonthKey: todayMonthKey(),
-    calendarMonth: {}, // memberId -> 'YYYY-MM'（会員カードのミニカレンダーは月全体のナビゲーションと独立）
+    calendarMonth: {}, // memberId -> 'YYYY-MM'（会員詳細のミニカレンダーは月全体のナビゲーションと独立）
+    activeView: 'dashboard', // 'dashboard' | 'members' | 'calendar'
+    dashboardSearch: '',
+    membersFilter: { query: '', course: 'all', status: 'all', sort: 'name' },
+    detailMemberId: null,
     busy: false,
   };
 
@@ -145,6 +155,7 @@
     return {
       id: row.id,
       name: row.name,
+      course: row.course_sessions || null,
       weeklyFreq: row.weekly_sessions || 0,
       monthlyGoal: row.monthly_target || 0,
       remainingContract: row.remaining_contract || 0,
@@ -155,6 +166,7 @@
   function memberToRow(m) {
     return {
       name: m.name,
+      course_sessions: m.course || null,
       weekly_sessions: m.weeklyFreq,
       monthly_target: m.monthlyGoal,
       remaining_contract: m.remainingContract,
@@ -168,6 +180,7 @@
 
   const FIELD_LABELS = {
     name: '会員名',
+    course_sessions: 'コース',
     weekly_sessions: '週の目標頻度',
     monthly_target: '月の目標セッション数',
     remaining_contract: '契約残りセッション数',
@@ -229,13 +242,40 @@
     return logCount(memberId, 'booked', (d) => inRange(d, start, end));
   }
 
-  function nextSessionDate(memberId) {
+  // 今月の実施/予約/残り必要数/達成率/ステータス（達成・順調・不足）をまとめて算出する
+  function memberMonthStats(member, monthKey) {
+    const done = doneInMonth(member.id, monthKey);
+    const booked = bookedInMonth(member.id, monthKey);
+    const target = member.monthlyGoal || 0;
+    const remaining = Math.max(target - done - booked, 0);
+    const rate = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0;
+    let status;
+    if (target <= 0 || done >= target) status = 'achieved';
+    else if (done + booked >= target) status = 'ontrack';
+    else status = 'short';
+    return { done, booked, target, remaining, rate, status };
+  }
+
+  // 直近の未来の予約（日付＋時間）を1件返す
+  function nextBookingEntry(memberId) {
     const today = todayISO();
-    const dates = state.data.log
+    const entries = state.data.log
       .filter((e) => e.memberId === memberId && e.type === 'booked' && e.date >= today)
-      .map((e) => e.date)
-      .sort();
-    return dates.length ? dates[0] : null;
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+        const ta = a.time || '99:99';
+        const tb = b.time || '99:99';
+        return ta < tb ? -1 : ta > tb ? 1 : 0;
+      });
+    return entries[0] || null;
+  }
+
+  function formatNextSession(memberId) {
+    const e = nextBookingEntry(memberId);
+    if (!e) return null;
+    const d = parseISO(e.date);
+    const dateLabel = `${d.getMonth() + 1}/${d.getDate()}`;
+    return e.time ? `${dateLabel} ${e.time.slice(0, 5)}` : dateLabel;
   }
 
   // ---------- Supabase data access ----------
@@ -324,8 +364,12 @@
     renderMonthNav();
     renderMonthlySummary();
     renderWeeklySummary();
-    renderMembers();
+    renderDashboardSearch();
+    renderMembersView();
     renderCalendarOverview();
+    if (state.detailMemberId != null && !$('#member-detail-modal').classList.contains('hidden')) {
+      renderMemberDetail();
+    }
   }
 
   function renderMonthNav() {
@@ -372,7 +416,58 @@
     $('#monthly-goal-input').value = goal;
   }
 
-  // 全会員のセッションを1つのカレンダーにまとめて表示する（トップ画面用）
+  function renderWeeklySummary() {
+    const section = $('#weekly-summary');
+    if (state.viewMonthKey !== todayMonthKey()) {
+      section.classList.add('hidden');
+      return;
+    }
+    section.classList.remove('hidden');
+    const range = currentWeekRange();
+    const goal = weeklyGoalFor(range.key);
+    const done = doneInRange(null, range.start, range.end);
+    const booked = bookedInRange(null, range.start, range.end);
+    const remaining = Math.max(goal - done, 0);
+
+    $('#week-range-label').textContent = weekLabel(range);
+    $('#week-goal-input').value = goal;
+    $('#week-stat-done').textContent = done;
+    $('#week-stat-booked').textContent = booked;
+    $('#week-stat-remaining').textContent = remaining;
+  }
+
+  // ---------- ダッシュボード会員検索 ----------
+  function renderDashboardSearch() {
+    const q = state.dashboardSearch.trim();
+    const resultsEl = $('#dashboard-search-results');
+    if (!q) {
+      resultsEl.innerHTML = '';
+      resultsEl.classList.add('hidden');
+      return;
+    }
+    resultsEl.classList.remove('hidden');
+    const monthKey = state.viewMonthKey;
+    const matches = state.data.members.filter((m) => m.name.toLowerCase().includes(q.toLowerCase()));
+    if (matches.length === 0) {
+      resultsEl.innerHTML = `<p class="cal-overview-empty">「${escapeHtml(q)}」に一致する会員が見つかりません</p>`;
+      return;
+    }
+    resultsEl.innerHTML = matches
+      .map((m) => {
+        const stats = memberMonthStats(m, monthKey);
+        const next = formatNextSession(m.id);
+        return `
+        <button type="button" class="search-result-row" data-action="open-detail" data-id="${m.id}">
+          <div class="search-result-name">${escapeHtml(m.name)}</div>
+          <div class="search-result-line">${courseLabel(m.course)}｜残り${m.remainingContract}回</div>
+          <div class="search-result-line">次回 ${next ? escapeHtml(next) : '未定'}</div>
+          <div class="search-result-line">今月 ${stats.done}実施 / ${stats.booked}予約 / ${stats.target}目標</div>
+        </button>`;
+      })
+      .join('');
+  }
+
+  // ---------- 全会員の月間カレンダー ----------
   function renderCalendarOverview() {
     const monthKey = state.viewMonthKey;
     $('#cal-overview-month-label').textContent = ` ${monthLabel(monthKey)}`;
@@ -476,61 +571,19 @@
           const statusClass = e.type === 'done' ? 'is-done' : 'is-booked';
           const statusLabel = e.type === 'done' ? '実施済み' : '予約';
           const timeLabel = e.time ? e.time.slice(0, 5) : '時間未定';
+          const nameHtml = e.member
+            ? `<button type="button" class="day-detail-name" data-action="open-detail" data-id="${e.member.id}">${escapeHtml(e.member.name)}</button>`
+            : `<span class="day-detail-name">(削除済み)</span>`;
           return `
         <div class="day-detail-row ${statusClass}">
           <span class="day-detail-time">${timeLabel}</span>
-          <span class="day-detail-name">${escapeHtml(e.member ? e.member.name : '(削除済み)')}</span>
+          ${nameHtml}
           <span class="day-detail-badge">${statusLabel}</span>
         </div>`;
         })
         .join('') || `<p class="cal-overview-empty">この日の予定はありません</p>`;
 
     openModal('#day-detail-modal');
-  }
-
-  function renderWeeklySummary() {
-    const section = $('#weekly-summary');
-    if (state.viewMonthKey !== todayMonthKey()) {
-      section.classList.add('hidden');
-      return;
-    }
-    section.classList.remove('hidden');
-    const range = currentWeekRange();
-    const goal = weeklyGoalFor(range.key);
-    const done = doneInRange(null, range.start, range.end);
-    const booked = bookedInRange(null, range.start, range.end);
-    const remaining = Math.max(goal - done, 0);
-
-    $('#week-range-label').textContent = weekLabel(range);
-    $('#week-goal-input').value = goal;
-    $('#week-stat-done').textContent = done;
-    $('#week-stat-booked').textContent = booked;
-    $('#week-stat-remaining').textContent = remaining;
-  }
-
-  // 予約済み日程の一覧（未来は近い順、過去は新しい順）
-  function bookingListHtml(memberId) {
-    const today = todayISO();
-    const dates = state.data.log
-      .filter((e) => e.memberId === memberId && e.type === 'booked')
-      .map((e) => e.date);
-    const future = dates.filter((d) => d >= today).sort();
-    const past = dates.filter((d) => d < today).sort().reverse();
-
-    if (future.length === 0 && past.length === 0) {
-      return `<p class="booking-empty">予約はまだありません</p>`;
-    }
-
-    const row = (dateStr, cls) => {
-      const d = parseISO(dateStr);
-      return `<div class="booking-row ${cls}"><span class="booking-date">${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS_JA[d.getDay()]})</span></div>`;
-    };
-
-    let html = future.map((d) => row(d, 'is-future')).join('');
-    if (past.length) {
-      html += `<div class="booking-divider">過去</div>` + past.map((d) => row(d, 'is-past')).join('');
-    }
-    return html;
   }
 
   // 会員ごとのミニカレンダー（実施済み＝✓、予約あり＝●）
@@ -567,11 +620,12 @@
     }
 
     return `
+      <h4>簡易カレンダー</h4>
       <div class="mini-calendar">
         <div class="cal-head">
-          <button class="cal-nav" data-action="cal-prev" data-id="${member.id}" aria-label="前の月">‹</button>
+          <button type="button" class="cal-nav" data-action="cal-prev" data-id="${member.id}" aria-label="前の月">‹</button>
           <span class="cal-label">${monthLabel(monthKey)}</span>
-          <button class="cal-nav" data-action="cal-next" data-id="${member.id}" aria-label="次の月">›</button>
+          <button type="button" class="cal-nav" data-action="cal-next" data-id="${member.id}" aria-label="次の月">›</button>
         </div>
         <div class="cal-grid cal-weekdays">${WEEKDAYS_JA.map((w) => `<div class="cal-wd">${w}</div>`).join('')}</div>
         <div class="cal-grid">${cells.join('')}</div>
@@ -579,67 +633,158 @@
       </div>`;
   }
 
-  function memberCardHtml(m) {
-    const monthKey = state.viewMonthKey;
-    const isCurrent = monthKey === todayMonthKey();
-    const done = doneInMonth(m.id, monthKey);
-    const booked = bookedInMonth(m.id, monthKey);
-    const remaining = Math.max(m.monthlyGoal - done, 0);
-    const next = nextSessionDate(m.id);
-
-    return `
-    <div class="member-card" data-id="${m.id}">
-      <div class="member-card-head">
-        <div class="member-name">${escapeHtml(m.name)}</div>
-        <div class="member-badge">週${m.weeklyFreq}</div>
-      </div>
-      <div class="member-stats">
-        <div class="mstat"><span class="mstat-label">月目標</span><span class="mstat-value">${m.monthlyGoal}</span></div>
-        <div class="mstat"><span class="mstat-label">実施</span><span class="mstat-value">${done}</span></div>
-        <div class="mstat"><span class="mstat-label">予約</span><span class="mstat-value">${booked}</span></div>
-        <div class="mstat"><span class="mstat-label">残り目標</span><span class="mstat-value ${remaining === 0 ? 'good' : ''}">${remaining}</span></div>
-      </div>
-      <div class="member-meta">
-        <div>次回セッション: ${next ? escapeHtml(next) : '未定'}</div>
-        <div>契約残り: ${m.remainingContract} 回</div>
-        ${m.memo ? `<div class="member-memo">メモ: ${escapeHtml(m.memo)}</div>` : ''}
-      </div>
-      <div class="booking-section">
-        <div class="booking-section-title">予約済み日程</div>
-        <div class="booking-list">${bookingListHtml(m.id)}</div>
-      </div>
-      ${calendarHtml(m)}
-      ${
-        isCurrent
-          ? `
-      <div class="member-actions">
-        <div class="counter-group">
-          <span class="counter-label">実施</span>
-          <button class="btn-round" data-action="done-minus" data-id="${m.id}">−1</button>
-          <button class="btn-round primary" data-action="done-plus" data-id="${m.id}">＋1</button>
-        </div>
-        <div class="counter-group">
-          <span class="counter-label">予約</span>
-          <button class="btn-round" data-action="booked-minus" data-id="${m.id}">−1</button>
-          <button class="btn-round wide" data-action="booked-plus" data-id="${m.id}">＋予約</button>
-        </div>
-      </div>`
-          : ''
+  // ---------- 会員一覧（検索・絞り込み・並び替え） ----------
+  function filterMembers(members, filter, monthKey) {
+    const q = filter.query.trim().toLowerCase();
+    return members.filter((m) => {
+      if (q && !m.name.toLowerCase().includes(q)) return false;
+      if (filter.course !== 'all') {
+        if (filter.course === 'none') {
+          if (m.course) return false;
+        } else if (String(m.course) !== filter.course) {
+          return false;
+        }
       }
-      <div class="member-footer">
-        <button class="btn-link" data-action="edit-member" data-id="${m.id}">編集</button>
-        <button class="btn-link danger" data-action="delete-member" data-id="${m.id}">削除</button>
-      </div>
-    </div>`;
+      if (filter.status !== 'all') {
+        if (memberMonthStats(m, monthKey).status !== filter.status) return false;
+      }
+      return true;
+    });
   }
 
-  function renderMembers() {
-    const list = $('#members-list');
+  function sortMembers(members, sortKey, monthKey) {
+    const arr = [...members];
+    if (sortKey === 'next') {
+      arr.sort((a, b) => {
+        const na = nextBookingEntry(a.id);
+        const nb = nextBookingEntry(b.id);
+        const ka = na ? na.date + (na.time || '') : '9999-99-99';
+        const kb = nb ? nb.date + (nb.time || '') : '9999-99-99';
+        return ka < kb ? -1 : ka > kb ? 1 : 0;
+      });
+    } else if (sortKey === 'contract') {
+      arr.sort((a, b) => a.remainingContract - b.remainingContract);
+    } else if (sortKey === 'shortage') {
+      arr.sort((a, b) => memberMonthStats(b, monthKey).remaining - memberMonthStats(a, monthKey).remaining);
+    } else {
+      arr.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    }
+    return arr;
+  }
+
+  function memberCompactCardHtml(m, monthKey) {
+    const stats = memberMonthStats(m, monthKey);
+    const next = formatNextSession(m.id);
+    return `
+    <button type="button" class="mcard" data-action="open-detail" data-id="${m.id}">
+      <div class="mcard-head">
+        <div class="mcard-name">${escapeHtml(m.name)}</div>
+        <span class="mcard-status status-${stats.status}">${STATUS_LABELS[stats.status]}</span>
+      </div>
+      <div class="mcard-course">${courseLabel(m.course)}</div>
+      <div class="mcard-sub">契約残り：${m.remainingContract}回 ・ 週${m.weeklyFreq}回</div>
+      <div class="mcard-month">
+        <div class="mcard-month-title">今月</div>
+        <div class="mcard-month-grid">
+          <div class="mcard-month-item"><span>目標</span><strong>${stats.target}回</strong></div>
+          <div class="mcard-month-item"><span>実施</span><strong>${stats.done}回</strong></div>
+          <div class="mcard-month-item"><span>予約</span><strong>${stats.booked}回</strong></div>
+          <div class="mcard-month-item"><span>残り</span><strong>${stats.remaining}回</strong></div>
+        </div>
+      </div>
+      <div class="mcard-rate">達成率 <strong>${stats.rate}%</strong></div>
+      <div class="mcard-next">次回：${next ? escapeHtml(next) : '未定'}</div>
+    </button>`;
+  }
+
+  function renderMembersView() {
+    const monthKey = state.viewMonthKey;
+    const listEl = $('#members-view-list');
     if (state.data.members.length === 0) {
-      list.innerHTML = `<p class="empty-msg">まだ会員が登録されていません。「＋ 会員を追加」から登録してください。</p>`;
+      listEl.innerHTML = `<p class="empty-msg">まだ会員が登録されていません。「＋ 会員を追加」から登録してください。</p>`;
       return;
     }
-    list.innerHTML = state.data.members.map(memberCardHtml).join('');
+    const filtered = filterMembers(state.data.members, state.membersFilter, monthKey);
+    const sorted = sortMembers(filtered, state.membersFilter.sort, monthKey);
+    if (sorted.length === 0) {
+      listEl.innerHTML = `<p class="empty-msg">条件に一致する会員が見つかりません。</p>`;
+      return;
+    }
+    listEl.innerHTML = sorted.map((m) => memberCompactCardHtml(m, monthKey)).join('');
+  }
+
+  // ---------- 会員詳細モーダル ----------
+  function openMemberDetail(memberId) {
+    const m = state.data.members.find((x) => x.id === memberId);
+    if (!m) return;
+    state.detailMemberId = memberId;
+    renderMemberDetail();
+    openModal('#member-detail-modal');
+  }
+
+  function renderMemberDetail() {
+    const m = state.data.members.find((x) => x.id === state.detailMemberId);
+    if (!m) {
+      closeModal('#member-detail-modal');
+      return;
+    }
+    const monthKey = state.viewMonthKey;
+    const stats = memberMonthStats(m, monthKey);
+    const nextEntry = nextBookingEntry(m.id);
+
+    $('#detail-name').textContent = m.name;
+    const statusEl = $('#detail-status');
+    statusEl.textContent = STATUS_LABELS[stats.status];
+    statusEl.className = `mcard-status status-${stats.status}`;
+
+    $('#detail-course').textContent = courseLabel(m.course);
+    $('#detail-contract').textContent = `${m.remainingContract}回`;
+    $('#detail-weekly-freq').textContent = `週${m.weeklyFreq}回`;
+    $('#detail-monthly-goal').textContent = `${m.monthlyGoal}回`;
+    $('#detail-memo').textContent = m.memo || 'メモはありません';
+
+    $('#detail-done').textContent = stats.done;
+    $('#detail-booked').textContent = stats.booked;
+    $('#detail-remaining').textContent = stats.remaining;
+    $('#detail-rate').textContent = `${stats.rate}%`;
+
+    if (nextEntry) {
+      const d = parseISO(nextEntry.date);
+      $('#detail-next-date').textContent = `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS_JA[d.getDay()]})`;
+      $('#detail-next-time').textContent = nextEntry.time ? nextEntry.time.slice(0, 5) : '時間未定';
+    } else {
+      $('#detail-next-date').textContent = '未定';
+      $('#detail-next-time').textContent = '-';
+    }
+
+    const today = todayISO();
+    const future = state.data.log
+      .filter((e) => e.memberId === m.id && e.type === 'booked' && e.date >= today)
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+        const ta = a.time || '99:99';
+        const tb = b.time || '99:99';
+        return ta < tb ? -1 : ta > tb ? 1 : 0;
+      });
+    $('#detail-booking-list').innerHTML = future.length
+      ? future
+          .map((e) => {
+            const d = parseISO(e.date);
+            const label = `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS_JA[d.getDay()]})`;
+            const timeLabel = e.time ? e.time.slice(0, 5) : '時間未定';
+            return `<div class="booking-row is-future"><span class="booking-date">${label}</span><span class="booking-time">${timeLabel}</span></div>`;
+          })
+          .join('')
+      : `<p class="booking-empty">今後の予約はありません</p>`;
+
+    $('#detail-calendar').innerHTML = calendarHtml(m);
+
+    $('#detail-done-plus').dataset.id = m.id;
+    $('#detail-done-minus').dataset.id = m.id;
+    $('#detail-booking-plus').dataset.id = m.id;
+    $('#detail-booking-minus').dataset.id = m.id;
+    $('#detail-edit-btn').dataset.id = m.id;
+    $('#detail-delete-btn').dataset.id = m.id;
   }
 
   // ---------- busy guard & error banner ----------
@@ -715,6 +860,7 @@
     $('#member-form-title').textContent = member ? '会員を編集' : '会員を追加';
     $('#member-id').value = member ? member.id : '';
     $('#member-name').value = member ? member.name : '';
+    $('#member-course').value = member && member.course ? String(member.course) : '';
     $('#member-weekly-freq').value = member ? member.weeklyFreq : 2;
     $('#member-monthly-goal').value = member ? member.monthlyGoal : 8;
     $('#member-remaining-contract').value = member ? member.remainingContract : 0;
@@ -737,8 +883,23 @@
     openModal('#confirm-modal');
   }
 
+  // ---------- タブ切り替え ----------
+  function switchView(view) {
+    state.activeView = view;
+    document.querySelectorAll('.app-view').forEach((el) => {
+      el.classList.toggle('hidden', el.id !== `view-${view}`);
+    });
+    document.querySelectorAll('.app-tab').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.view === view);
+    });
+  }
+
   // ---------- event wiring ----------
   function wireEvents() {
+    document.querySelectorAll('.app-tab').forEach((btn) => {
+      btn.addEventListener('click', () => switchView(btn.dataset.view));
+    });
+
     $('#month-nav-prev').addEventListener('click', () => {
       state.viewMonthKey = addMonths(state.viewMonthKey, -1);
       render();
@@ -757,13 +918,6 @@
       render();
     });
 
-    $('#overview-calendar-grid').addEventListener('click', (e) => {
-      const cell = e.target.closest('.ocal-cell[data-date]');
-      if (!cell) return;
-      openDayDetail(cell.dataset.date);
-    });
-    $('#day-detail-close-btn').addEventListener('click', () => closeModal('#day-detail-modal'));
-
     $('#week-goal-input').addEventListener('change', (e) => {
       const v = Math.max(0, parseInt(e.target.value, 10) || 0);
       const range = currentWeekRange();
@@ -772,34 +926,94 @@
       render();
     });
 
-    $('#members-list').addEventListener('click', (e) => {
+    // ダッシュボード検索
+    $('#dashboard-search-input').addEventListener('input', (e) => {
+      state.dashboardSearch = e.target.value;
+      renderDashboardSearch();
+    });
+
+    // 会員一覧: 検索・絞り込み・並び替え
+    $('#members-search-input').addEventListener('input', (e) => {
+      state.membersFilter.query = e.target.value;
+      renderMembersView();
+    });
+    $('#members-filter-course').addEventListener('change', (e) => {
+      state.membersFilter.course = e.target.value;
+      renderMembersView();
+    });
+    $('#members-filter-status').addEventListener('change', (e) => {
+      state.membersFilter.status = e.target.value;
+      renderMembersView();
+    });
+    $('#members-sort').addEventListener('change', (e) => {
+      state.membersFilter.sort = e.target.value;
+      renderMembersView();
+    });
+
+    // 全会員カレンダー: 日付タップで詳細モーダル
+    $('#overview-calendar-grid').addEventListener('click', (e) => {
+      const cell = e.target.closest('.ocal-cell[data-date]');
+      if (!cell) return;
+      openDayDetail(cell.dataset.date);
+    });
+    $('#day-detail-close-btn').addEventListener('click', () => closeModal('#day-detail-modal'));
+
+    // 会員カード・検索結果・日別詳細の会員名 → 会員詳細モーダルを開く（共通の委譲ハンドラ）
+    document.body.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action="open-detail"]');
+      if (!btn) return;
+      closeModal('#day-detail-modal');
+      openMemberDetail(Number(btn.dataset.id));
+    });
+
+    // 会員詳細モーダル内のミニカレンダー月送り
+    $('#detail-calendar').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-action]');
       if (!btn) return;
-      const { action } = btn.dataset;
       const id = Number(btn.dataset.id);
-      if (action === 'cal-prev') {
+      if (btn.dataset.action === 'cal-prev') {
         state.calendarMonth[id] = addMonths(getCalendarMonthKey(id), -1);
-        render();
-        return;
-      }
-      if (action === 'cal-next') {
+        renderMemberDetail();
+      } else if (btn.dataset.action === 'cal-next') {
         state.calendarMonth[id] = addMonths(getCalendarMonthKey(id), 1);
-        render();
-        return;
-      }
-      const member = state.data.members.find((m) => m.id === id);
-      if (!member) return;
-      if (action === 'done-plus') withBusyGuard(() => addDoneToday(id));
-      else if (action === 'done-minus') withBusyGuard(() => removeLastDone(id));
-      else if (action === 'booked-plus') openBookingForm(id);
-      else if (action === 'booked-minus') withBusyGuard(() => removeNextBooking(id));
-      else if (action === 'edit-member') openMemberForm(member);
-      else if (action === 'delete-member') {
-        openConfirm(`「${member.name}」を削除します。よろしいですか？（Supabase上の記録もすべて削除されます）`, () =>
-          withBusyGuard(() => deleteMember(id))
-        );
+        renderMemberDetail();
       }
     });
+
+    // 会員詳細モーダルの操作ボタン
+    $('#detail-done-plus').addEventListener('click', () => {
+      const id = Number($('#detail-done-plus').dataset.id);
+      withBusyGuard(() => addDoneToday(id));
+    });
+    $('#detail-done-minus').addEventListener('click', () => {
+      const id = Number($('#detail-done-minus').dataset.id);
+      withBusyGuard(() => removeLastDone(id));
+    });
+    $('#detail-booking-plus').addEventListener('click', () => {
+      const id = Number($('#detail-booking-plus').dataset.id);
+      openBookingForm(id);
+    });
+    $('#detail-booking-minus').addEventListener('click', () => {
+      const id = Number($('#detail-booking-minus').dataset.id);
+      withBusyGuard(() => removeNextBooking(id));
+    });
+    $('#detail-edit-btn').addEventListener('click', () => {
+      const id = Number($('#detail-edit-btn').dataset.id);
+      const member = state.data.members.find((m) => m.id === id);
+      if (member) openMemberForm(member);
+    });
+    $('#detail-delete-btn').addEventListener('click', () => {
+      const id = Number($('#detail-delete-btn').dataset.id);
+      const member = state.data.members.find((m) => m.id === id);
+      if (!member) return;
+      openConfirm(`「${member.name}」を削除します。よろしいですか？（Supabase上の記録もすべて削除されます）`, () =>
+        withBusyGuard(async () => {
+          await deleteMember(id);
+          closeModal('#member-detail-modal');
+        })
+      );
+    });
+    $('#member-detail-close-btn').addEventListener('click', () => closeModal('#member-detail-modal'));
 
     $('#add-member-btn').addEventListener('click', () => openMemberForm(null));
     $('#member-cancel-btn').addEventListener('click', () => closeModal('#member-modal'));
@@ -808,8 +1022,10 @@
       e.preventDefault();
       const idRaw = $('#member-id').value;
       const id = idRaw ? Number(idRaw) : null;
+      const courseRaw = $('#member-course').value;
       const payload = {
         name: $('#member-name').value.trim() || '名称未設定',
+        course: courseRaw ? Number(courseRaw) : null,
         weeklyFreq: Math.max(0, parseInt($('#member-weekly-freq').value, 10) || 0),
         monthlyGoal: Math.max(0, parseInt($('#member-monthly-goal').value, 10) || 0),
         remainingContract: Math.max(0, parseInt($('#member-remaining-contract').value, 10) || 0),
@@ -885,6 +1101,7 @@
                 for (const m of members) {
                   await createMember({
                     name: m.name,
+                    course: m.course || null,
                     weeklyFreq: m.weeklyFreq || 0,
                     monthlyGoal: m.monthlyGoal || 0,
                     remainingContract: m.remainingContract || 0,

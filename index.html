@@ -38,111 +38,160 @@
     </div>
   </header>
 
-  <section class="summary-panel">
-    <div class="stat-grid">
-      <div class="stat-tile">
-        <div class="stat-label">月間目標</div>
-        <input id="monthly-goal-input" type="number" inputmode="numeric" min="0" class="stat-input">
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">実施済み</div>
-        <div id="stat-done" class="stat-value">0</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">予約済み</div>
-        <div id="stat-booked" class="stat-value">0</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">着地見込み</div>
-        <div id="stat-landing" class="stat-value">0</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">残り必要数</div>
-        <div id="stat-remaining" class="stat-value">0</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">達成率</div>
-        <div id="stat-rate" class="stat-value">0%</div>
-      </div>
-      <div id="stat-goal" class="visually-hidden">0</div>
-    </div>
+  <!-- ダッシュボード -->
+  <div id="view-dashboard" class="app-view">
+    <section class="search-panel">
+      <input id="dashboard-search-input" type="search" inputmode="search" class="search-input" placeholder="会員名で検索">
+      <div id="dashboard-search-results" class="search-results hidden"></div>
+    </section>
 
-    <div class="progress-bar"><div id="progress-bar-fill" class="progress-bar-fill"></div></div>
-
-    <div class="detail-row">
-      <div class="detail-item"><span>残り日数</span><strong id="detail-remain-days">-</strong></div>
-      <div class="detail-item"><span>必要な1日平均</span><strong id="detail-per-day">-</strong></div>
-      <div id="detail-forecast" class="forecast">-</div>
-    </div>
-  </section>
-
-  <section id="weekly-summary" class="weekly-panel">
-    <div class="weekly-head">
-      <h2>今週の目標</h2>
-      <span id="week-range-label" class="week-range"></span>
-    </div>
-    <div class="weekly-body">
-      <label class="weekly-goal-field">
-        週目標
-        <input id="week-goal-input" type="number" inputmode="numeric" min="0" class="stat-input small">
-      </label>
-      <div class="weekly-stats">
-        <div class="mstat"><span class="mstat-label">今週実施</span><span id="week-stat-done" class="mstat-value">0</span></div>
-        <div class="mstat"><span class="mstat-label">今週予約</span><span id="week-stat-booked" class="mstat-value">0</span></div>
-        <div class="mstat"><span class="mstat-label">週目標まで</span><span id="week-stat-remaining" class="mstat-value">0</span></div>
+    <section class="summary-panel">
+      <div class="stat-grid">
+        <div class="stat-tile">
+          <div class="stat-label">月間目標</div>
+          <input id="monthly-goal-input" type="number" inputmode="numeric" min="0" class="stat-input">
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">実施済み</div>
+          <div id="stat-done" class="stat-value">0</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">予約済み</div>
+          <div id="stat-booked" class="stat-value">0</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">着地見込み</div>
+          <div id="stat-landing" class="stat-value">0</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">残り必要数</div>
+          <div id="stat-remaining" class="stat-value">0</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">達成率</div>
+          <div id="stat-rate" class="stat-value">0%</div>
+        </div>
+        <div id="stat-goal" class="visually-hidden">0</div>
       </div>
-    </div>
-  </section>
 
-  <section class="calendar-overview-panel">
-    <div class="cal-overview-head">
-      <h2>月間カレンダー<span id="cal-overview-month-label"></span></h2>
-      <div class="cal-overview-today">今日: <strong id="today-count-badge">0</strong>件</div>
-    </div>
-    <div class="cal-overview-weekdays">
-      <div class="ocal-wd">日</div><div class="ocal-wd">月</div><div class="ocal-wd">火</div>
-      <div class="ocal-wd">水</div><div class="ocal-wd">木</div><div class="ocal-wd">金</div><div class="ocal-wd">土</div>
-    </div>
-    <div id="overview-calendar-grid" class="cal-overview-grid"></div>
-    <div class="cal-overview-legend">
-      <span class="legend-item"><span class="legend-dot legend-booked"></span>予約</span>
-      <span class="legend-item"><span class="legend-dot legend-done"></span>実施済み</span>
-    </div>
-    <div class="cal-overview-week-list">
-      <h3>今週誰が来るか</h3>
-      <div id="this-week-list"></div>
-    </div>
-    <div class="cal-overview-member-tally">
-      <h3>会員別 今月の回数</h3>
-      <div id="member-tally-list"></div>
-    </div>
-  </section>
+      <div class="progress-bar"><div id="progress-bar-fill" class="progress-bar-fill"></div></div>
 
-  <section class="members-panel">
-    <div class="members-header">
-      <h2>会員管理</h2>
-      <button id="add-member-btn" class="btn-primary">＋ 会員を追加</button>
-    </div>
-    <div id="members-list" class="members-list"></div>
-  </section>
+      <div class="detail-row">
+        <div class="detail-item"><span>残り日数</span><strong id="detail-remain-days">-</strong></div>
+        <div class="detail-item"><span>必要な1日平均</span><strong id="detail-per-day">-</strong></div>
+        <div id="detail-forecast" class="forecast">-</div>
+      </div>
+    </section>
 
-  <section class="data-tools">
-    <h2>データの保存・復元</h2>
-    <p class="data-tools-desc">会員データはSupabase（クラウド）に保存され、複数の端末で共有されます。月間・週間の目標数値だけはこの端末のブラウザ内に保存されます。念のためのバックアップファイルも書き出せます。</p>
-    <div class="data-tools-buttons">
-      <button id="export-btn" class="btn-secondary">バックアップを保存</button>
-      <label class="btn-secondary file-label">
-        バックアップから追加
-        <input id="import-input" type="file" accept="application/json" class="visually-hidden">
-      </label>
-      <button id="reset-btn" class="btn-danger">全会員データを削除</button>
-    </div>
-  </section>
+    <section id="weekly-summary" class="weekly-panel">
+      <div class="weekly-head">
+        <h2>今週の目標</h2>
+        <span id="week-range-label" class="week-range"></span>
+      </div>
+      <div class="weekly-body">
+        <label class="weekly-goal-field">
+          週目標
+          <input id="week-goal-input" type="number" inputmode="numeric" min="0" class="stat-input small">
+        </label>
+        <div class="weekly-stats">
+          <div class="mstat"><span class="mstat-label">今週実施</span><span id="week-stat-done" class="mstat-value">0</span></div>
+          <div class="mstat"><span class="mstat-label">今週予約</span><span id="week-stat-booked" class="mstat-value">0</span></div>
+          <div class="mstat"><span class="mstat-label">週目標まで</span><span id="week-stat-remaining" class="mstat-value">0</span></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 会員一覧 -->
+  <div id="view-members" class="app-view hidden">
+    <section class="members-toolbar">
+      <div class="members-toolbar-head">
+        <h2>会員一覧</h2>
+        <button id="add-member-btn" class="btn-primary">＋ 会員を追加</button>
+      </div>
+      <input id="members-search-input" type="search" inputmode="search" class="search-input" placeholder="会員名で検索">
+      <div class="members-filters">
+        <label class="filter-field">コース
+          <select id="members-filter-course">
+            <option value="all">すべて</option>
+            <option value="8">8回</option>
+            <option value="24">24回</option>
+            <option value="48">48回</option>
+            <option value="none">未設定</option>
+          </select>
+        </label>
+        <label class="filter-field">今月の状況
+          <select id="members-filter-status">
+            <option value="all">すべて</option>
+            <option value="achieved">達成</option>
+            <option value="ontrack">順調</option>
+            <option value="short">不足</option>
+          </select>
+        </label>
+        <label class="filter-field">並び替え
+          <select id="members-sort">
+            <option value="name">名前順</option>
+            <option value="next">次回予約が近い順</option>
+            <option value="contract">契約残数が少ない順</option>
+            <option value="shortage">月目標の不足数が多い順</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <div id="members-view-list" class="members-list"></div>
+
+    <section class="data-tools">
+      <h2>データの保存・復元</h2>
+      <p class="data-tools-desc">会員データはSupabase（クラウド）に保存され、複数の端末で共有されます。月間・週間の目標数値だけはこの端末のブラウザ内に保存されます。念のためのバックアップファイルも書き出せます。</p>
+      <div class="data-tools-buttons">
+        <button id="export-btn" class="btn-secondary">バックアップを保存</button>
+        <label class="btn-secondary file-label">
+          バックアップから追加
+          <input id="import-input" type="file" accept="application/json" class="visually-hidden">
+        </label>
+        <button id="reset-btn" class="btn-danger">全会員データを削除</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- 月間カレンダー -->
+  <div id="view-calendar" class="app-view hidden">
+    <section class="calendar-overview-panel">
+      <div class="cal-overview-head">
+        <h2>月間カレンダー<span id="cal-overview-month-label"></span></h2>
+        <div class="cal-overview-today">今日: <strong id="today-count-badge">0</strong>件</div>
+      </div>
+      <div class="cal-overview-weekdays">
+        <div class="ocal-wd">日</div><div class="ocal-wd">月</div><div class="ocal-wd">火</div>
+        <div class="ocal-wd">水</div><div class="ocal-wd">木</div><div class="ocal-wd">金</div><div class="ocal-wd">土</div>
+      </div>
+      <div id="overview-calendar-grid" class="cal-overview-grid"></div>
+      <div class="cal-overview-legend">
+        <span class="legend-item"><span class="legend-dot legend-booked"></span>予約</span>
+        <span class="legend-item"><span class="legend-dot legend-done"></span>実施済み</span>
+      </div>
+      <div class="cal-overview-week-list">
+        <h3>今週誰が来るか</h3>
+        <div id="this-week-list"></div>
+      </div>
+      <div class="cal-overview-member-tally">
+        <h3>会員別 今月の回数</h3>
+        <div id="member-tally-list"></div>
+      </div>
+    </section>
+  </div>
 
   <footer class="app-footer">
     <p>BUG泡瀬店 専用ツール ・ 会員データはSupabaseに保存されます</p>
   </footer>
 </div>
+
+<nav id="app-tabs" class="app-tabs">
+  <button type="button" class="app-tab active" data-view="dashboard">ダッシュボード</button>
+  <button type="button" class="app-tab" data-view="members">会員一覧</button>
+  <button type="button" class="app-tab" data-view="calendar">月間カレンダー</button>
+</nav>
 
 <div id="loading-overlay" class="loading-overlay hidden">
   <p>読み込み中…</p>
@@ -156,6 +205,14 @@
       <input type="hidden" id="member-id">
       <label>会員名
         <input id="member-name" type="text" required placeholder="例）山田 太郎">
+      </label>
+      <label>コース
+        <select id="member-course">
+          <option value="">未設定</option>
+          <option value="8">8回コース</option>
+          <option value="24">24回コース</option>
+          <option value="48">48回コース</option>
+        </select>
       </label>
       <label>週の目標頻度（週◯回）
         <input id="member-weekly-freq" type="number" inputmode="numeric" min="0" required>
@@ -204,6 +261,71 @@
     <div id="day-detail-list" class="day-detail-list"></div>
     <div class="modal-actions">
       <button type="button" id="day-detail-close-btn" class="btn-secondary">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- 会員 詳細 モーダル -->
+<div id="member-detail-modal" class="modal hidden">
+  <div class="modal-box detail-modal-box">
+    <div class="detail-header">
+      <h3 id="detail-name"></h3>
+      <span id="detail-status" class="mcard-status"></span>
+    </div>
+
+    <div class="detail-section">
+      <h4>基本情報</h4>
+      <div class="detail-grid">
+        <div class="detail-grid-item"><span>コース</span><strong id="detail-course"></strong></div>
+        <div class="detail-grid-item"><span>契約残数</span><strong id="detail-contract"></strong></div>
+        <div class="detail-grid-item"><span>週の目標頻度</span><strong id="detail-weekly-freq"></strong></div>
+        <div class="detail-grid-item"><span>月目標</span><strong id="detail-monthly-goal"></strong></div>
+      </div>
+      <p class="detail-memo" id="detail-memo"></p>
+    </div>
+
+    <div class="detail-section">
+      <h4>今月の状況</h4>
+      <div class="detail-grid">
+        <div class="detail-grid-item"><span>実施数</span><strong id="detail-done"></strong></div>
+        <div class="detail-grid-item"><span>予約数</span><strong id="detail-booked"></strong></div>
+        <div class="detail-grid-item"><span>残り必要数</span><strong id="detail-remaining"></strong></div>
+        <div class="detail-grid-item"><span>達成率</span><strong id="detail-rate"></strong></div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h4>次回予約</h4>
+      <div class="detail-grid">
+        <div class="detail-grid-item"><span>日付</span><strong id="detail-next-date"></strong></div>
+        <div class="detail-grid-item"><span>時間</span><strong id="detail-next-time"></strong></div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h4>予約済み日程</h4>
+      <div id="detail-booking-list" class="booking-list"></div>
+    </div>
+
+    <div class="detail-section" id="detail-calendar"></div>
+
+    <div class="member-actions">
+      <div class="counter-group">
+        <span class="counter-label">実施</span>
+        <button class="btn-round" id="detail-done-minus">−1</button>
+        <button class="btn-round primary" id="detail-done-plus">＋1</button>
+      </div>
+      <div class="counter-group">
+        <span class="counter-label">予約</span>
+        <button class="btn-round wide" id="detail-booking-minus">取消</button>
+        <button class="btn-round wide" id="detail-booking-plus">＋予約</button>
+      </div>
+    </div>
+
+    <div class="modal-actions detail-footer-actions">
+      <button type="button" class="btn-secondary" id="detail-edit-btn">編集</button>
+      <button type="button" class="btn-danger" id="detail-delete-btn">削除</button>
+      <button type="button" class="btn-secondary" id="member-detail-close-btn">閉じる</button>
     </div>
   </div>
 </div>
