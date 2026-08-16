@@ -163,7 +163,7 @@
   }
 
   function logFromRow(row) {
-    return { id: row.id, memberId: row.member_id, date: row.session_date, type: row.type };
+    return { id: row.id, memberId: row.member_id, date: row.session_date, type: row.type, time: row.session_time || null };
   }
 
   const FIELD_LABELS = {
@@ -299,10 +299,10 @@
     state.data.log = state.data.log.filter((e) => e.memberId !== id);
   }
 
-  async function insertLog(memberId, date, type) {
+  async function insertLog(memberId, date, type, time) {
     const { data, error } = await supabase
       .from('session_logs')
-      .insert({ member_id: memberId, session_date: date, type })
+      .insert({ member_id: memberId, session_date: date, type, session_time: time || null })
       .select()
       .single();
     if (error) throw error;
@@ -325,6 +325,7 @@
     renderMonthlySummary();
     renderWeeklySummary();
     renderMembers();
+    renderCalendarOverview();
   }
 
   function renderMonthNav() {
@@ -369,6 +370,122 @@
     }
 
     $('#monthly-goal-input').value = goal;
+  }
+
+  // 全会員のセッションを1つのカレンダーにまとめて表示する（トップ画面用）
+  function renderCalendarOverview() {
+    const monthKey = state.viewMonthKey;
+    $('#cal-overview-month-label').textContent = ` ${monthLabel(monthKey)}`;
+
+    const totalDays = daysInMonth(monthKey);
+    const [y, mo] = monthKey.split('-').map(Number);
+    const startWeekday = new Date(y, mo - 1, 1).getDay();
+    const today = todayISO();
+
+    const byDate = {};
+    state.data.log.forEach((e) => {
+      if (monthKeyOf(e.date) !== monthKey) return;
+      if (!byDate[e.date]) byDate[e.date] = { done: 0, booked: 0 };
+      byDate[e.date][e.type]++;
+    });
+
+    const todayEntry = byDate[today];
+    $('#today-count-badge').textContent = todayEntry ? todayEntry.done + todayEntry.booked : 0;
+
+    const cells = [];
+    for (let i = 0; i < startWeekday; i++) cells.push('<div class="ocal-cell empty"></div>');
+    for (let day = 1; day <= totalDays; day++) {
+      const dateStr = `${monthKey}-${pad2(day)}`;
+      const entry = byDate[dateStr];
+      const doneCount = entry ? entry.done : 0;
+      const bookedCount = entry ? entry.booked : 0;
+      const total = doneCount + bookedCount;
+      const isToday = dateStr === today;
+      if (total === 0) {
+        cells.push(`<div class="ocal-cell${isToday ? ' is-today' : ''}"><span class="ocal-day">${day}</span></div>`);
+      } else {
+        cells.push(`
+          <button type="button" class="ocal-cell has-data${isToday ? ' is-today' : ''}" data-date="${dateStr}">
+            <span class="ocal-day">${day}</span>
+            <span class="ocal-dots">
+              ${bookedCount ? '<span class="ocal-dot ocal-dot-booked"></span>' : ''}
+              ${doneCount ? '<span class="ocal-dot ocal-dot-done"></span>' : ''}
+            </span>
+            ${total >= 2 ? `<span class="ocal-count">${total}件</span>` : ''}
+          </button>`);
+      }
+    }
+    $('#overview-calendar-grid').innerHTML = cells.join('');
+
+    // 今週誰が来るか
+    const range = currentWeekRange();
+    const weekEntries = state.data.log
+      .filter((e) => inRange(e.date, range.start, range.end))
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const weekListEl = $('#this-week-list');
+    if (weekEntries.length === 0) {
+      weekListEl.innerHTML = `<p class="cal-overview-empty">今週の予定はありません</p>`;
+    } else {
+      weekListEl.innerHTML = weekEntries
+        .map((e) => {
+          const member = state.data.members.find((mm) => mm.id === e.memberId);
+          const d = parseISO(e.date);
+          const label = `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS_JA[d.getDay()]})`;
+          const statusClass = e.type === 'done' ? 'is-done' : 'is-booked';
+          const statusLabel = e.type === 'done' ? '実施済み' : '予約';
+          return `<div class="week-list-row ${statusClass}"><span class="week-list-date">${label}</span><span class="week-list-name">${escapeHtml(member ? member.name : '(削除済み)')}</span><span class="week-list-status">${statusLabel}</span></div>`;
+        })
+        .join('');
+    }
+
+    // 会員別 今月の回数
+    const tallyRows = state.data.members
+      .map((mm) => ({ name: mm.name, done: doneInMonth(mm.id, monthKey), booked: bookedInMonth(mm.id, monthKey) }))
+      .filter((r) => r.done + r.booked > 0)
+      .sort((a, b) => b.done + b.booked - (a.done + a.booked));
+    const tallyEl = $('#member-tally-list');
+    if (tallyRows.length === 0) {
+      tallyEl.innerHTML = `<p class="cal-overview-empty">今月の記録はまだありません</p>`;
+    } else {
+      tallyEl.innerHTML = tallyRows
+        .map(
+          (r) =>
+            `<div class="tally-row"><span class="tally-name">${escapeHtml(r.name)}</span><span class="tally-count">実施${r.done}・予約${r.booked}</span></div>`
+        )
+        .join('');
+    }
+  }
+
+  function openDayDetail(dateStr) {
+    const d = parseISO(dateStr);
+    $('#day-detail-title').textContent = `${d.getMonth() + 1}月${d.getDate()}日(${WEEKDAYS_JA[d.getDay()]})`;
+
+    const entries = state.data.log
+      .filter((e) => e.date === dateStr)
+      .map((e) => ({ ...e, member: state.data.members.find((mm) => mm.id === e.memberId) }))
+      .sort((a, b) => {
+        const ta = a.time || '99:99';
+        const tb = b.time || '99:99';
+        if (ta !== tb) return ta < tb ? -1 : 1;
+        return (a.member ? a.member.name : '').localeCompare(b.member ? b.member.name : '');
+      });
+
+    $('#day-detail-list').innerHTML =
+      entries
+        .map((e) => {
+          const statusClass = e.type === 'done' ? 'is-done' : 'is-booked';
+          const statusLabel = e.type === 'done' ? '実施済み' : '予約';
+          const timeLabel = e.time ? e.time.slice(0, 5) : '時間未定';
+          return `
+        <div class="day-detail-row ${statusClass}">
+          <span class="day-detail-time">${timeLabel}</span>
+          <span class="day-detail-name">${escapeHtml(e.member ? e.member.name : '(削除済み)')}</span>
+          <span class="day-detail-badge">${statusLabel}</span>
+        </div>`;
+        })
+        .join('') || `<p class="cal-overview-empty">この日の予定はありません</p>`;
+
+    openModal('#day-detail-modal');
   }
 
   function renderWeeklySummary() {
@@ -574,8 +691,8 @@
     render();
   }
 
-  async function addBooking(memberId, dateStr) {
-    await insertLog(memberId, dateStr, 'booked');
+  async function addBooking(memberId, dateStr, timeStr) {
+    await insertLog(memberId, dateStr, 'booked', timeStr);
     render();
   }
 
@@ -609,6 +726,7 @@
     $('#booking-member-id').value = memberId;
     $('#booking-date').value = todayISO();
     $('#booking-date').min = todayISO();
+    $('#booking-time').value = '';
     openModal('#booking-modal');
   }
 
@@ -638,6 +756,13 @@
       saveLocalSettings();
       render();
     });
+
+    $('#overview-calendar-grid').addEventListener('click', (e) => {
+      const cell = e.target.closest('.ocal-cell[data-date]');
+      if (!cell) return;
+      openDayDetail(cell.dataset.date);
+    });
+    $('#day-detail-close-btn').addEventListener('click', () => closeModal('#day-detail-modal'));
 
     $('#week-goal-input').addEventListener('change', (e) => {
       const v = Math.max(0, parseInt(e.target.value, 10) || 0);
@@ -706,12 +831,13 @@
       e.preventDefault();
       const memberId = Number($('#booking-member-id').value);
       const date = $('#booking-date').value;
+      const time = $('#booking-time').value || null;
       if (!date) {
         closeModal('#booking-modal');
         return;
       }
       withBusyGuard(async () => {
-        await addBooking(memberId, date);
+        await addBooking(memberId, date, time);
         closeModal('#booking-modal');
       });
     });

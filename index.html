@@ -94,6 +94,30 @@
     </div>
   </section>
 
+  <section class="calendar-overview-panel">
+    <div class="cal-overview-head">
+      <h2>月間カレンダー<span id="cal-overview-month-label"></span></h2>
+      <div class="cal-overview-today">今日: <strong id="today-count-badge">0</strong>件</div>
+    </div>
+    <div class="cal-overview-weekdays">
+      <div class="ocal-wd">日</div><div class="ocal-wd">月</div><div class="ocal-wd">火</div>
+      <div class="ocal-wd">水</div><div class="ocal-wd">木</div><div class="ocal-wd">金</div><div class="ocal-wd">土</div>
+    </div>
+    <div id="overview-calendar-grid" class="cal-overview-grid"></div>
+    <div class="cal-overview-legend">
+      <span class="legend-item"><span class="legend-dot legend-booked"></span>予約</span>
+      <span class="legend-item"><span class="legend-dot legend-done"></span>実施済み</span>
+    </div>
+    <div class="cal-overview-week-list">
+      <h3>今週誰が来るか</h3>
+      <div id="this-week-list"></div>
+    </div>
+    <div class="cal-overview-member-tally">
+      <h3>会員別 今月の回数</h3>
+      <div id="member-tally-list"></div>
+    </div>
+  </section>
+
   <section class="members-panel">
     <div class="members-header">
       <h2>会員管理</h2>
@@ -162,11 +186,25 @@
       <label>予約日
         <input id="booking-date" type="date" required>
       </label>
+      <label>時間（任意）
+        <input id="booking-time" type="time">
+      </label>
       <div class="modal-actions">
         <button type="button" id="booking-cancel-btn" class="btn-secondary">キャンセル</button>
         <button type="submit" class="btn-primary">追加</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- 日別 予定詳細 モーダル -->
+<div id="day-detail-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3 id="day-detail-title"></h3>
+    <div id="day-detail-list" class="day-detail-list"></div>
+    <div class="modal-actions">
+      <button type="button" id="day-detail-close-btn" class="btn-secondary">閉じる</button>
+    </div>
   </div>
 </div>
 

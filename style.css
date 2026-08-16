@@ -258,6 +258,115 @@ html, body {
 .mstat-value { font-size: 1.2rem; font-weight: 700; }
 .mstat-value.good { color: var(--good); }
 
+/* calendar overview (全会員の月間カレンダー) */
+.calendar-overview-panel {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 18px 16px;
+  margin: 20px 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.cal-overview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cal-overview-head h2 { margin: 0; font-size: 1.1rem; }
+#cal-overview-month-label { font-size: 0.85rem; font-weight: 400; color: var(--text-muted); }
+.cal-overview-today { font-size: 0.85rem; color: var(--text-muted); white-space: nowrap; }
+.cal-overview-today strong { color: var(--primary-dark); font-size: 1.15rem; }
+
+.cal-overview-weekdays,
+.cal-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cal-overview-weekdays { margin: 12px 0 4px; }
+.ocal-wd {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ocal-cell {
+  aspect-ratio: 1 / 1;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 8px;
+  border: none;
+  background: var(--bg);
+  font-family: inherit;
+  color: var(--text);
+  padding: 2px;
+  min-width: 0;
+}
+.ocal-cell.has-data { cursor: pointer; }
+.ocal-cell.has-data:active { background: var(--border); }
+.ocal-cell.is-today { box-shadow: inset 0 0 0 2px var(--primary); }
+.ocal-day { font-size: 0.8rem; font-weight: 600; }
+.ocal-dots { display: flex; gap: 3px; height: 6px; }
+.ocal-dot { width: 6px; height: 6px; border-radius: 50%; }
+.ocal-dot-booked { background: var(--primary); }
+.ocal-dot-done { background: var(--good); }
+.ocal-count { font-size: 0.6rem; color: var(--text-muted); line-height: 1; }
+
+.cal-overview-legend {
+  display: flex;
+  gap: 16px;
+  margin: 12px 0 4px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.legend-booked { background: var(--primary); }
+.legend-done { background: var(--good); }
+
+.cal-overview-week-list,
+.cal-overview-member-tally {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.cal-overview-week-list h3,
+.cal-overview-member-tally h3 {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.week-list-row,
+.tally-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 2px;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+.week-list-row:last-child,
+.tally-row:last-child { border-bottom: none; }
+.week-list-date { color: var(--text-muted); min-width: 4.2em; flex-shrink: 0; }
+.week-list-name, .tally-name { flex: 1; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.week-list-status {
+  font-size: 0.72rem;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.week-list-row.is-done .week-list-status { color: var(--good); }
+.week-list-row.is-booked .week-list-status { color: var(--primary-dark); }
+.tally-count { font-size: 0.78rem; color: var(--text-muted); flex-shrink: 0; }
+.cal-overview-empty { font-size: 0.85rem; color: var(--text-muted); margin: 0; padding: 4px 0; }
+
 /* members panel */
 .members-panel { margin: 20px 0; }
 .members-header {
@@ -543,6 +652,35 @@ html, body {
   overflow-y: auto;
 }
 .modal-box h3 { margin-top: 0; }
+
+.day-detail-list {
+  max-height: min(360px, 55vh);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+}
+.day-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+}
+.day-detail-time { font-size: 0.8rem; color: var(--text-muted); min-width: 3.6em; flex-shrink: 0; }
+.day-detail-name { flex: 1; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.day-detail-badge {
+  font-size: 0.72rem;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.day-detail-row.is-booked .day-detail-badge { background: rgba(31,111,235,0.12); color: var(--primary-dark); }
+.day-detail-row.is-done .day-detail-badge { background: rgba(26,138,74,0.12); color: var(--good); }
 
 #member-form, #booking-form {
   display: flex;

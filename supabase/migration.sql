@@ -25,6 +25,10 @@ create table if not exists public.session_logs (
 create index if not exists session_logs_member_id_idx on public.session_logs (member_id);
 create index if not exists session_logs_date_idx on public.session_logs (session_date);
 
+-- 2-1) 予約の「時間」を記録できるように列を追加します（任意項目。すでにあれば何もしません）
+alter table public.session_logs
+  add column if not exists session_time time;
+
 -- 3) Row Level Security（行レベルセキュリティ）を有効化します
 --    このアプリはログイン機能を持たないため、匿名キー(anon key)からの読み書きを許可します。
 --    ※ URLとanonキーを知っている人なら誰でもデータの閲覧・変更ができる状態になる点にご注意ください。
