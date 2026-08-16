@@ -781,6 +781,7 @@
 
     $('#detail-done-plus').dataset.id = m.id;
     $('#detail-done-minus').dataset.id = m.id;
+    $('#detail-done-past-btn').dataset.id = m.id;
     $('#detail-booking-plus').dataset.id = m.id;
     $('#detail-booking-minus').dataset.id = m.id;
     $('#detail-edit-btn').dataset.id = m.id;
@@ -813,6 +814,11 @@
   // ---------- actions ----------
   async function addDoneToday(memberId) {
     await insertLog(memberId, todayISO(), 'done');
+    render();
+  }
+
+  async function addDoneOnDate(memberId, dateStr) {
+    await insertLog(memberId, dateStr, 'done');
     render();
   }
 
@@ -874,6 +880,13 @@
     $('#booking-date').min = todayISO();
     $('#booking-time').value = '';
     openModal('#booking-modal');
+  }
+
+  function openDoneForm(memberId) {
+    $('#done-member-id').value = memberId;
+    $('#done-date').value = todayISO();
+    $('#done-date').max = todayISO();
+    openModal('#done-modal');
   }
 
   let confirmCallback = null;
@@ -989,6 +1002,10 @@
       const id = Number($('#detail-done-minus').dataset.id);
       withBusyGuard(() => removeLastDone(id));
     });
+    $('#detail-done-past-btn').addEventListener('click', () => {
+      const id = Number($('#detail-done-past-btn').dataset.id);
+      openDoneForm(id);
+    });
     $('#detail-booking-plus').addEventListener('click', () => {
       const id = Number($('#detail-booking-plus').dataset.id);
       openBookingForm(id);
@@ -1055,6 +1072,25 @@
       withBusyGuard(async () => {
         await addBooking(memberId, date, time);
         closeModal('#booking-modal');
+      });
+    });
+
+    $('#done-cancel-btn').addEventListener('click', () => closeModal('#done-modal'));
+    $('#done-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const memberId = Number($('#done-member-id').value);
+      const date = $('#done-date').value;
+      if (!date) {
+        closeModal('#done-modal');
+        return;
+      }
+      if (date > todayISO()) {
+        alert('未来の日付は選べません。今日までの日付を指定してください。');
+        return;
+      }
+      withBusyGuard(async () => {
+        await addDoneOnDate(memberId, date);
+        closeModal('#done-modal');
       });
     });
 

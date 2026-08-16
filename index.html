@@ -254,6 +254,24 @@
   </div>
 </div>
 
+<!-- 実施記録（過去日）追加 モーダル -->
+<div id="done-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>実施記録を追加</h3>
+    <p class="modal-note">過去に実施したセッションを、日付を指定して記録します。</p>
+    <form id="done-form">
+      <input type="hidden" id="done-member-id">
+      <label>実施日
+        <input id="done-date" type="date" required>
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="done-cancel-btn" class="btn-secondary">キャンセル</button>
+        <button type="submit" class="btn-primary">追加</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- 日別 予定詳細 モーダル -->
 <div id="day-detail-modal" class="modal hidden">
   <div class="modal-box">
@@ -320,6 +338,9 @@
         <button class="btn-round wide" id="detail-booking-minus">取消</button>
         <button class="btn-round wide" id="detail-booking-plus">＋予約</button>
       </div>
+    </div>
+    <div class="detail-secondary-actions">
+      <button type="button" class="btn-link" id="detail-done-past-btn">過去の日付で実施を追加</button>
     </div>
 
     <div class="modal-actions detail-footer-actions">

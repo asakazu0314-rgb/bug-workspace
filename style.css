@@ -670,6 +670,17 @@ body {
 }
 .counter-label { font-size: 0.8rem; color: var(--text-muted); }
 
+.detail-secondary-actions {
+  margin-top: 8px;
+  text-align: center;
+}
+
+.modal-note {
+  margin: 0 0 4px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
 /* data tools */
 .data-tools {
   background: var(--card-bg);
@@ -748,7 +759,7 @@ body {
 }
 .modal.hidden { display: none; }
 /* 会員詳細・日別詳細モーダルの上から開く操作用モーダルは、常に手前に表示する */
-#member-modal, #booking-modal, #confirm-modal { z-index: 55; }
+#member-modal, #booking-modal, #done-modal, #confirm-modal { z-index: 55; }
 
 .modal-box {
   background: #fff;
