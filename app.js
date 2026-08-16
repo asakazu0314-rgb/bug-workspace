@@ -4,6 +4,7 @@
   const LOCAL_SETTINGS_KEY = 'bug_session_goal_app_v1';
   const DEFAULT_MONTHLY_GOAL = 120;
   const DEFAULT_WEEKLY_GOAL = 28;
+  const WEEKDAYS_JA = ['日', '月', '火', '水', '木', '金', '土'];
 
   // ---------- date helpers ----------
   const pad2 = (n) => String(n).padStart(2, '0');
@@ -75,8 +76,7 @@
   function weekLabel(range) {
     const s = parseISO(range.start);
     const e = parseISO(range.end);
-    const wd = ['日', '月', '火', '水', '木', '金', '土'];
-    return `${s.getMonth() + 1}/${s.getDate()}(${wd[s.getDay()]})〜${e.getMonth() + 1}/${e.getDate()}(${wd[e.getDay()]})`;
+    return `${s.getMonth() + 1}/${s.getDate()}(${WEEKDAYS_JA[s.getDay()]})〜${e.getMonth() + 1}/${e.getDate()}(${WEEKDAYS_JA[e.getDay()]})`;
   }
 
   function inRange(dateStr, startStr, endStr) {
@@ -118,8 +118,14 @@
     settings: loadLocalSettings(),
     data: { members: [], log: [] },
     viewMonthKey: todayMonthKey(),
+    calendarMonth: {}, // memberId -> 'YYYY-MM'（会員カードのミニカレンダーは月全体のナビゲーションと独立）
     busy: false,
   };
+
+  function getCalendarMonthKey(memberId) {
+    if (!state.calendarMonth[memberId]) state.calendarMonth[memberId] = todayMonthKey();
+    return state.calendarMonth[memberId];
+  }
 
   // ---------- Supabase client ----------
   let supabase = null;
@@ -385,6 +391,77 @@
     $('#week-stat-remaining').textContent = remaining;
   }
 
+  // 予約済み日程の一覧（未来は近い順、過去は新しい順）
+  function bookingListHtml(memberId) {
+    const today = todayISO();
+    const dates = state.data.log
+      .filter((e) => e.memberId === memberId && e.type === 'booked')
+      .map((e) => e.date);
+    const future = dates.filter((d) => d >= today).sort();
+    const past = dates.filter((d) => d < today).sort().reverse();
+
+    if (future.length === 0 && past.length === 0) {
+      return `<p class="booking-empty">予約はまだありません</p>`;
+    }
+
+    const row = (dateStr, cls) => {
+      const d = parseISO(dateStr);
+      return `<div class="booking-row ${cls}"><span class="booking-date">${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS_JA[d.getDay()]})</span></div>`;
+    };
+
+    let html = future.map((d) => row(d, 'is-future')).join('');
+    if (past.length) {
+      html += `<div class="booking-divider">過去</div>` + past.map((d) => row(d, 'is-past')).join('');
+    }
+    return html;
+  }
+
+  // 会員ごとのミニカレンダー（実施済み＝✓、予約あり＝●）
+  function calendarHtml(member) {
+    const monthKey = getCalendarMonthKey(member.id);
+    const [y, mo] = monthKey.split('-').map(Number);
+    const totalDays = daysInMonth(monthKey);
+    const startWeekday = new Date(y, mo - 1, 1).getDay();
+    const today = todayISO();
+
+    const statusByDate = {};
+    state.data.log.forEach((e) => {
+      if (e.memberId !== member.id || monthKeyOf(e.date) !== monthKey) return;
+      if (e.type === 'done') statusByDate[e.date] = 'done';
+      else if (e.type === 'booked' && statusByDate[e.date] !== 'done') statusByDate[e.date] = 'booked';
+    });
+    const doneCount = Object.values(statusByDate).filter((s) => s === 'done').length;
+    const bookedCount = Object.values(statusByDate).filter((s) => s === 'booked').length;
+
+    const cells = [];
+    for (let i = 0; i < startWeekday; i++) cells.push('<div class="cal-cell empty"></div>');
+    for (let day = 1; day <= totalDays; day++) {
+      const dateStr = `${monthKey}-${pad2(day)}`;
+      const status = statusByDate[dateStr];
+      const mark =
+        status === 'done'
+          ? '<span class="cal-mark cal-done">✓</span>'
+          : status === 'booked'
+          ? '<span class="cal-mark cal-booked">●</span>'
+          : '';
+      cells.push(
+        `<div class="cal-cell${dateStr === today ? ' is-today' : ''}"><span class="cal-day">${day}</span>${mark}</div>`
+      );
+    }
+
+    return `
+      <div class="mini-calendar">
+        <div class="cal-head">
+          <button class="cal-nav" data-action="cal-prev" data-id="${member.id}" aria-label="前の月">‹</button>
+          <span class="cal-label">${monthLabel(monthKey)}</span>
+          <button class="cal-nav" data-action="cal-next" data-id="${member.id}" aria-label="次の月">›</button>
+        </div>
+        <div class="cal-grid cal-weekdays">${WEEKDAYS_JA.map((w) => `<div class="cal-wd">${w}</div>`).join('')}</div>
+        <div class="cal-grid">${cells.join('')}</div>
+        <div class="cal-summary">実施 ${doneCount}・予約 ${bookedCount}</div>
+      </div>`;
+  }
+
   function memberCardHtml(m) {
     const monthKey = state.viewMonthKey;
     const isCurrent = monthKey === todayMonthKey();
@@ -410,6 +487,11 @@
         <div>契約残り: ${m.remainingContract} 回</div>
         ${m.memo ? `<div class="member-memo">メモ: ${escapeHtml(m.memo)}</div>` : ''}
       </div>
+      <div class="booking-section">
+        <div class="booking-section-title">予約済み日程</div>
+        <div class="booking-list">${bookingListHtml(m.id)}</div>
+      </div>
+      ${calendarHtml(m)}
       ${
         isCurrent
           ? `
@@ -570,6 +652,16 @@
       if (!btn) return;
       const { action } = btn.dataset;
       const id = Number(btn.dataset.id);
+      if (action === 'cal-prev') {
+        state.calendarMonth[id] = addMonths(getCalendarMonthKey(id), -1);
+        render();
+        return;
+      }
+      if (action === 'cal-next') {
+        state.calendarMonth[id] = addMonths(getCalendarMonthKey(id), 1);
+        render();
+        return;
+      }
       const member = state.data.members.find((m) => m.id === id);
       if (!member) return;
       if (action === 'done-plus') withBusyGuard(() => addDoneToday(id));
