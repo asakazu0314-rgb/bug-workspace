@@ -182,6 +182,20 @@
     </section>
   </div>
 
+  <!-- 食事サポート ダッシュボード -->
+  <div id="view-meal" class="app-view hidden">
+    <section class="meal-dashboard-panel">
+      <h2>食事サポート</h2>
+      <div class="meal-dash-stats">
+        <div class="meal-dash-stat"><span>今日の食事報告</span><strong id="meal-dash-today">0</strong></div>
+        <div class="meal-dash-stat"><span>未確認</span><strong id="meal-dash-unconfirmed">0</strong></div>
+        <div class="meal-dash-stat"><span>FB未作成</span><strong id="meal-dash-nofb">0</strong></div>
+      </div>
+      <input id="meal-dash-search" type="search" inputmode="search" class="search-input" placeholder="会員名で検索">
+      <div id="meal-dash-list" class="meal-dash-list"></div>
+    </section>
+  </div>
+
   <footer class="app-footer">
     <p>BUG泡瀬店 専用ツール ・ 会員データはSupabaseに保存されます</p>
   </footer>
@@ -191,6 +205,7 @@
   <button type="button" class="app-tab active" data-view="dashboard">ダッシュボード</button>
   <button type="button" class="app-tab" data-view="members">会員一覧</button>
   <button type="button" class="app-tab" data-view="calendar">月間カレンダー</button>
+  <button type="button" class="app-tab" data-view="meal">食事サポート</button>
 </nav>
 
 <div id="loading-overlay" class="loading-overlay hidden">
@@ -201,7 +216,7 @@
 <div id="member-modal" class="modal hidden">
   <div class="modal-box">
     <h3 id="member-form-title">会員を追加</h3>
-    <form id="member-form">
+    <form id="member-form" class="app-form">
       <input type="hidden" id="member-id">
       <label>会員名
         <input id="member-name" type="text" required placeholder="例）山田 太郎">
@@ -238,7 +253,7 @@
 <div id="booking-modal" class="modal hidden">
   <div class="modal-box">
     <h3>予約日を追加</h3>
-    <form id="booking-form">
+    <form id="booking-form" class="app-form">
       <input type="hidden" id="booking-member-id">
       <label>予約日
         <input id="booking-date" type="date" required>
@@ -259,7 +274,7 @@
   <div class="modal-box">
     <h3>実施記録を追加</h3>
     <p class="modal-note">過去に実施したセッションを、日付を指定して記録します。</p>
-    <form id="done-form">
+    <form id="done-form" class="app-form">
       <input type="hidden" id="done-member-id">
       <label>実施日
         <input id="done-date" type="date" required>
@@ -291,62 +306,272 @@
       <span id="detail-status" class="mcard-status"></span>
     </div>
 
-    <div class="detail-section">
-      <h4>基本情報</h4>
-      <div class="detail-grid">
-        <div class="detail-grid-item"><span>コース</span><strong id="detail-course"></strong></div>
-        <div class="detail-grid-item"><span>契約残数</span><strong id="detail-contract"></strong></div>
-        <div class="detail-grid-item"><span>週の目標頻度</span><strong id="detail-weekly-freq"></strong></div>
-        <div class="detail-grid-item"><span>月目標</span><strong id="detail-monthly-goal"></strong></div>
-      </div>
-      <p class="detail-memo" id="detail-memo"></p>
+    <div class="detail-tabs">
+      <button type="button" class="detail-tab active" data-detail-tab="basic">基本情報</button>
+      <button type="button" class="detail-tab" data-detail-tab="session">セッション</button>
+      <button type="button" class="detail-tab" data-detail-tab="meal">食事サポート</button>
+      <button type="button" class="detail-tab" data-detail-tab="memo">メモ</button>
     </div>
 
-    <div class="detail-section">
-      <h4>今月の状況</h4>
-      <div class="detail-grid">
-        <div class="detail-grid-item"><span>実施数</span><strong id="detail-done"></strong></div>
-        <div class="detail-grid-item"><span>予約数</span><strong id="detail-booked"></strong></div>
-        <div class="detail-grid-item"><span>残り必要数</span><strong id="detail-remaining"></strong></div>
-        <div class="detail-grid-item"><span>達成率</span><strong id="detail-rate"></strong></div>
+    <!-- 基本情報 -->
+    <div class="detail-tab-panel" data-detail-panel="basic">
+      <div class="detail-section detail-section-first">
+        <h4>基本情報</h4>
+        <div class="detail-grid">
+          <div class="detail-grid-item"><span>コース</span><strong id="detail-course"></strong></div>
+          <div class="detail-grid-item"><span>契約残数</span><strong id="detail-contract"></strong></div>
+          <div class="detail-grid-item"><span>週の目標頻度</span><strong id="detail-weekly-freq"></strong></div>
+          <div class="detail-grid-item"><span>月目標</span><strong id="detail-monthly-goal"></strong></div>
+        </div>
       </div>
-    </div>
-
-    <div class="detail-section">
-      <h4>次回予約</h4>
-      <div class="detail-grid">
-        <div class="detail-grid-item"><span>日付</span><strong id="detail-next-date"></strong></div>
-        <div class="detail-grid-item"><span>時間</span><strong id="detail-next-time"></strong></div>
+      <div class="modal-actions detail-footer-actions">
+        <button type="button" class="btn-secondary" id="detail-edit-btn">編集</button>
+        <button type="button" class="btn-danger" id="detail-delete-btn">削除</button>
       </div>
     </div>
 
-    <div class="detail-section">
-      <h4>予約済み日程</h4>
-      <div id="detail-booking-list" class="booking-list"></div>
-    </div>
-
-    <div class="detail-section" id="detail-calendar"></div>
-
-    <div class="member-actions">
-      <div class="counter-group">
-        <span class="counter-label">実施</span>
-        <button class="btn-round" id="detail-done-minus">−1</button>
-        <button class="btn-round primary" id="detail-done-plus">＋1</button>
+    <!-- セッション -->
+    <div class="detail-tab-panel hidden" data-detail-panel="session">
+      <div class="detail-section detail-section-first">
+        <h4>今月の状況</h4>
+        <div class="detail-grid">
+          <div class="detail-grid-item"><span>実施数</span><strong id="detail-done"></strong></div>
+          <div class="detail-grid-item"><span>予約数</span><strong id="detail-booked"></strong></div>
+          <div class="detail-grid-item"><span>残り必要数</span><strong id="detail-remaining"></strong></div>
+          <div class="detail-grid-item"><span>達成率</span><strong id="detail-rate"></strong></div>
+        </div>
       </div>
-      <div class="counter-group">
-        <span class="counter-label">予約</span>
-        <button class="btn-round wide" id="detail-booking-minus">取消</button>
-        <button class="btn-round wide" id="detail-booking-plus">＋予約</button>
+
+      <div class="detail-section">
+        <h4>次回予約</h4>
+        <div class="detail-grid">
+          <div class="detail-grid-item"><span>日付</span><strong id="detail-next-date"></strong></div>
+          <div class="detail-grid-item"><span>時間</span><strong id="detail-next-time"></strong></div>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <h4>予約済み日程</h4>
+        <div id="detail-booking-list" class="booking-list"></div>
+      </div>
+
+      <div class="detail-section" id="detail-calendar"></div>
+
+      <div class="member-actions">
+        <div class="counter-group">
+          <span class="counter-label">実施</span>
+          <button class="btn-round" id="detail-done-minus">−1</button>
+          <button class="btn-round primary" id="detail-done-plus">＋1</button>
+        </div>
+        <div class="counter-group">
+          <span class="counter-label">予約</span>
+          <button class="btn-round wide" id="detail-booking-minus">取消</button>
+          <button class="btn-round wide" id="detail-booking-plus">＋予約</button>
+        </div>
+      </div>
+      <div class="detail-secondary-actions">
+        <button type="button" class="btn-link" id="detail-done-past-btn">過去の日付で実施を追加</button>
       </div>
     </div>
-    <div class="detail-secondary-actions">
-      <button type="button" class="btn-link" id="detail-done-past-btn">過去の日付で実施を追加</button>
+
+    <!-- 食事サポート -->
+    <div class="detail-tab-panel hidden" data-detail-panel="meal">
+      <div class="detail-section detail-section-first">
+        <div class="meal-section-head">
+          <h4>プロフィール</h4>
+          <button type="button" class="btn-link" id="meal-profile-edit-btn">編集</button>
+        </div>
+        <div id="meal-profile-summary" class="meal-profile-summary"></div>
+      </div>
+
+      <div class="detail-section">
+        <div class="meal-section-head">
+          <h4>会員様の経緯</h4>
+          <button type="button" class="btn-link" id="meal-note-add-btn">＋ 経緯を追加</button>
+        </div>
+        <div id="meal-notes-list" class="meal-notes-list"></div>
+      </div>
+
+      <div class="detail-section">
+        <div class="meal-section-head">
+          <h4>LINEトーク履歴</h4>
+          <button type="button" class="btn-link" id="line-message-add-btn">＋ 追加（テスト用）</button>
+        </div>
+        <p class="modal-note">LINE連携前は、ここから手動でテスト用のトーク履歴を追加して動作を確認できます。</p>
+        <div id="line-messages-list" class="line-messages-list"></div>
+      </div>
+
+      <div class="detail-section">
+        <div class="meal-section-head">
+          <h4>食事報告</h4>
+          <button type="button" class="btn-link" id="meal-report-add-btn">＋ 追加（テスト用）</button>
+        </div>
+        <select id="meal-report-filter" class="meal-report-filter-select">
+          <option value="all">すべて</option>
+          <option value="7d">最近7日</option>
+          <option value="30d">最近30日</option>
+          <option value="image">画像あり</option>
+          <option value="noimage">画像なし</option>
+          <option value="fbdone">FB作成済み</option>
+          <option value="unconfirmed">未確認</option>
+        </select>
+        <div id="meal-reports-list" class="meal-reports-list"></div>
+      </div>
     </div>
 
-    <div class="modal-actions detail-footer-actions">
-      <button type="button" class="btn-secondary" id="detail-edit-btn">編集</button>
-      <button type="button" class="btn-danger" id="detail-delete-btn">削除</button>
+    <!-- メモ -->
+    <div class="detail-tab-panel hidden" data-detail-panel="memo">
+      <div class="detail-section detail-section-first">
+        <h4>メモ</h4>
+        <p class="detail-memo" id="detail-memo"></p>
+        <p class="modal-note">メモの内容は「基本情報」タブの「編集」から変更できます。</p>
+      </div>
+    </div>
+
+    <div class="modal-actions detail-footer-actions detail-footer-actions-close">
       <button type="button" class="btn-secondary" id="member-detail-close-btn">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- 食事プロフィール 編集モーダル -->
+<div id="meal-profile-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>食事サポート プロフィール</h3>
+    <form id="meal-profile-form" class="app-form">
+      <input type="hidden" id="mp-member-id">
+      <label>目的
+        <select id="mp-purpose">
+          <option value="">未設定</option>
+          <option value="減量">減量</option>
+          <option value="増量">増量</option>
+          <option value="健康改善">健康改善</option>
+          <option value="筋力アップ">筋力アップ</option>
+          <option value="その他">その他</option>
+        </select>
+      </label>
+      <div class="form-row-3">
+        <label>現在体重(kg)<input id="mp-current-weight" type="number" step="0.1" inputmode="decimal"></label>
+        <label>目標体重(kg)<input id="mp-target-weight" type="number" step="0.1" inputmode="decimal"></label>
+        <label>身長(cm)<input id="mp-height" type="number" step="0.1" inputmode="decimal"></label>
+      </div>
+      <label>1日の食事回数
+        <input id="mp-meals-per-day" type="number" inputmode="numeric" min="0">
+      </label>
+      <label>食事方針<textarea id="mp-meal-policy" rows="2"></textarea></label>
+      <label>現在伝えている食事ルール<textarea id="mp-current-rules" rows="2"></textarea></label>
+      <label>主食量の目安<textarea id="mp-staple-amount" rows="2"></textarea></label>
+      <label>タンパク質についての指導内容<textarea id="mp-protein-guidance" rows="2"></textarea></label>
+      <label>脂質についての指導内容<textarea id="mp-fat-guidance" rows="2"></textarea></label>
+      <label>野菜・食物繊維についての指導内容<textarea id="mp-vegetable-guidance" rows="2"></textarea></label>
+      <label>生活リズム<textarea id="mp-daily-rhythm" rows="2"></textarea></label>
+      <label>仕事<input id="mp-occupation" type="text"></label>
+      <label>運動頻度<input id="mp-exercise-frequency" type="text"></label>
+      <label>トレーナーが注意していること<textarea id="mp-trainer-cautions" rows="2"></textarea></label>
+      <label>本人が苦手としていること<textarea id="mp-member-weak-points" rows="2"></textarea></label>
+      <label>過去のダイエット歴<textarea id="mp-diet-history" rows="2"></textarea></label>
+      <label>その他背景<textarea id="mp-other-background" rows="2"></textarea></label>
+      <label>トレーナーメモ<textarea id="mp-trainer-notes" rows="2"></textarea></label>
+      <div class="modal-actions">
+        <button type="button" id="meal-profile-cancel-btn" class="btn-secondary">キャンセル</button>
+        <button type="submit" class="btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 経緯 追加モーダル -->
+<div id="meal-note-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>経緯を追加</h3>
+    <form id="meal-note-form" class="app-form">
+      <input type="hidden" id="meal-note-member-id">
+      <label>日付
+        <input id="meal-note-date" type="date" required>
+      </label>
+      <label>内容
+        <textarea id="meal-note-content" rows="3" required placeholder="例）夜ご飯の白米を減らしすぎないように伝えた。"></textarea>
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="meal-note-cancel-btn" class="btn-secondary">キャンセル</button>
+        <button type="submit" class="btn-primary">追加</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- LINEトーク履歴 追加モーダル（テスト用） -->
+<div id="line-message-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>トーク履歴を追加（テスト用）</h3>
+    <p class="modal-note">LINE連携（Webhook）が動くまでの間、動作確認のために手動で1件ずつ追加できます。</p>
+    <form id="line-message-form" class="app-form">
+      <input type="hidden" id="lm-member-id">
+      <label>送信者
+        <select id="lm-sender">
+          <option value="member">会員</option>
+          <option value="trainer">トレーナー</option>
+        </select>
+      </label>
+      <label>種類
+        <select id="lm-type">
+          <option value="text">テキスト</option>
+          <option value="image">画像</option>
+        </select>
+      </label>
+      <label id="lm-body-field">本文
+        <textarea id="lm-body" rows="3"></textarea>
+      </label>
+      <label id="lm-image-field" class="hidden">画像
+        <input id="lm-image-file" type="file" accept="image/*">
+      </label>
+      <label>日時（空欄で現在時刻）
+        <input id="lm-sent-at" type="datetime-local">
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="line-message-cancel-btn" class="btn-secondary">キャンセル</button>
+        <button type="submit" class="btn-primary">追加</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 食事報告 追加モーダル（テスト用） -->
+<div id="meal-report-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>食事報告を追加（テスト用）</h3>
+    <p class="modal-note">LINE連携前でも、届いた食事報告を手動で記録してClaude用プロンプト作成を試せます。</p>
+    <form id="meal-report-form" class="app-form">
+      <input type="hidden" id="mr-member-id">
+      <label>ラベル（任意）
+        <input id="mr-label" type="text" placeholder="例）昼食">
+      </label>
+      <label>会員メッセージ
+        <textarea id="mr-text" rows="3" placeholder="例）今日のお昼です！"></textarea>
+      </label>
+      <label>画像（任意）
+        <input id="mr-image-file" type="file" accept="image/*">
+      </label>
+      <label>日時（空欄で現在時刻）
+        <input id="mr-reported-at" type="datetime-local">
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="meal-report-cancel-btn" class="btn-secondary">キャンセル</button>
+        <button type="submit" class="btn-primary">追加</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Claude用プロンプト モーダル -->
+<div id="prompt-modal" class="modal hidden">
+  <div class="modal-box prompt-modal-box">
+    <h3>Claude用フィードバックプロンプト</h3>
+    <p class="modal-note">下の内容をコピーして、Claudeに貼り付けてください。生成された回答は「食事報告」カードのFB欄に貼り戻して保存できます。</p>
+    <textarea id="prompt-textarea" class="prompt-textarea" readonly rows="14"></textarea>
+    <div class="modal-actions">
+      <button type="button" id="prompt-copy-btn" class="btn-primary">プロンプトをコピー</button>
+      <button type="button" id="prompt-close-btn" class="btn-secondary">閉じる</button>
     </div>
   </div>
 </div>

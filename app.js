@@ -95,6 +95,34 @@
     return course ? COURSE_LABELS[course] || `${course}回コース` : '未設定';
   }
 
+  function formatDateTime(isoString) {
+    const d = new Date(isoString);
+    return `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  }
+
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+    } catch (e) {
+      console.error('コピーに失敗しました', e);
+    }
+    document.body.removeChild(ta);
+  }
+
   // ---------- local settings (店舗全体の月間/週間目標のみ。会員データはSupabaseへ) ----------
   function defaultLocalSettings() {
     return { monthlyGoalByMonth: {}, weeklyGoalByWeek: {} };
@@ -122,12 +150,14 @@
   // ---------- state ----------
   const state = {
     settings: loadLocalSettings(),
-    data: { members: [], log: [] },
+    data: { members: [], log: [], mealProfiles: [], mealNotes: [], lineMessages: [], mealReports: [] },
     viewMonthKey: todayMonthKey(),
     calendarMonth: {}, // memberId -> 'YYYY-MM'（会員詳細のミニカレンダーは月全体のナビゲーションと独立）
-    activeView: 'dashboard', // 'dashboard' | 'members' | 'calendar'
+    activeView: 'dashboard', // 'dashboard' | 'members' | 'calendar' | 'meal'
+    detailTab: 'basic', // 'basic' | 'session' | 'meal' | 'memo'
     dashboardSearch: '',
     membersFilter: { query: '', course: 'all', status: 'all', sort: 'name' },
+    mealDashSearch: '',
     detailMemberId: null,
     busy: false,
   };
@@ -176,6 +206,89 @@
 
   function logFromRow(row) {
     return { id: row.id, memberId: row.member_id, date: row.session_date, type: row.type, time: row.session_time || null };
+  }
+
+  // ---------- 食事サポート: row <-> app model mapping ----------
+  const MEAL_PROFILE_FIELD_MAP = [
+    ['purpose', 'purpose', 'text'],
+    ['currentWeight', 'current_weight', 'number'],
+    ['targetWeight', 'target_weight', 'number'],
+    ['height', 'height', 'number'],
+    ['mealsPerDay', 'meals_per_day', 'number'],
+    ['mealPolicy', 'meal_policy', 'text'],
+    ['currentRules', 'current_rules', 'text'],
+    ['stapleAmount', 'staple_amount', 'text'],
+    ['proteinGuidance', 'protein_guidance', 'text'],
+    ['fatGuidance', 'fat_guidance', 'text'],
+    ['vegetableGuidance', 'vegetable_guidance', 'text'],
+    ['dailyRhythm', 'daily_rhythm', 'text'],
+    ['occupation', 'occupation', 'text'],
+    ['exerciseFrequency', 'exercise_frequency', 'text'],
+    ['trainerCautions', 'trainer_cautions', 'text'],
+    ['memberWeakPoints', 'member_weak_points', 'text'],
+    ['dietHistory', 'diet_history', 'text'],
+    ['otherBackground', 'other_background', 'text'],
+    ['trainerNotes', 'trainer_notes', 'text'],
+  ];
+
+  function mealProfileFromRow(row) {
+    const profile = { memberId: row.member_id };
+    MEAL_PROFILE_FIELD_MAP.forEach(([key, col]) => {
+      profile[key] = row[col] != null ? row[col] : null;
+    });
+    return profile;
+  }
+
+  function mealProfileToRow(memberId, profile) {
+    const row = { member_id: memberId, updated_at: new Date().toISOString() };
+    MEAL_PROFILE_FIELD_MAP.forEach(([key, col, kind]) => {
+      const raw = profile[key];
+      if (raw === '' || raw == null) {
+        row[col] = null;
+      } else if (kind === 'number') {
+        const n = Number(raw);
+        row[col] = Number.isFinite(n) ? n : null;
+      } else {
+        row[col] = raw;
+      }
+    });
+    return row;
+  }
+
+  function mealNoteFromRow(row) {
+    return { id: row.id, memberId: row.member_id, date: row.note_date, content: row.content };
+  }
+
+  function lineMessageFromRow(row) {
+    return {
+      id: row.id,
+      memberId: row.member_id,
+      lineUserId: row.line_user_id,
+      sentAt: row.sent_at,
+      sender: row.sender,
+      messageType: row.message_type,
+      body: row.body,
+      lineMessageId: row.line_message_id,
+      imagePath: row.image_path,
+      isConfirmed: row.is_confirmed,
+    };
+  }
+
+  function mealReportFromRow(row) {
+    return {
+      id: row.id,
+      memberId: row.member_id,
+      lineMessageRowId: row.line_message_id,
+      reportedAt: row.reported_at,
+      label: row.meal_label,
+      memberText: row.member_text,
+      hasImage: row.has_image,
+      imagePath: row.image_path,
+      aiFeedback: row.ai_feedback,
+      trainerFeedback: row.trainer_feedback,
+      sentFeedback: row.sent_feedback,
+      isConfirmed: row.is_confirmed,
+    };
   }
 
   const FIELD_LABELS = {
@@ -280,14 +393,23 @@
 
   // ---------- Supabase data access ----------
   async function fetchAll() {
-    const [membersRes, logsRes] = await Promise.all([
+    const [membersRes, logsRes, profilesRes, notesRes, lineMsgRes, reportsRes] = await Promise.all([
       supabase.from('members').select('*').order('created_at', { ascending: true }),
       supabase.from('session_logs').select('*'),
+      supabase.from('meal_profiles').select('*'),
+      supabase.from('meal_notes').select('*'),
+      supabase.from('line_messages').select('*'),
+      supabase.from('meal_reports').select('*'),
     ]);
-    if (membersRes.error) throw membersRes.error;
-    if (logsRes.error) throw logsRes.error;
+    [membersRes, logsRes, profilesRes, notesRes, lineMsgRes, reportsRes].forEach((res) => {
+      if (res.error) throw res.error;
+    });
     state.data.members = membersRes.data.map(memberFromRow);
     state.data.log = logsRes.data.map(logFromRow);
+    state.data.mealProfiles = profilesRes.data.map(mealProfileFromRow);
+    state.data.mealNotes = notesRes.data.map(mealNoteFromRow);
+    state.data.lineMessages = lineMsgRes.data.map(lineMessageFromRow);
+    state.data.mealReports = reportsRes.data.map(mealReportFromRow);
   }
 
   // 今月分の実施・予約件数を members.completed_sessions / booked_sessions に反映する
@@ -357,6 +479,215 @@
     await syncMemberCounts(memberId);
   }
 
+  // ---------- 食事サポート: Supabase データアクセス ----------
+  function getMealProfile(memberId) {
+    return state.data.mealProfiles.find((p) => p.memberId === memberId) || null;
+  }
+
+  async function saveMealProfile(memberId, profile) {
+    const row = mealProfileToRow(memberId, profile);
+    const { data, error } = await supabase.from('meal_profiles').upsert(row, { onConflict: 'member_id' }).select().single();
+    if (error) throw error;
+    const mapped = mealProfileFromRow(data);
+    const idx = state.data.mealProfiles.findIndex((p) => p.memberId === memberId);
+    if (idx >= 0) state.data.mealProfiles[idx] = mapped;
+    else state.data.mealProfiles.push(mapped);
+  }
+
+  async function addMealNote(memberId, dateStr, content) {
+    const { data, error } = await supabase
+      .from('meal_notes')
+      .insert({ member_id: memberId, note_date: dateStr, content })
+      .select()
+      .single();
+    if (error) throw error;
+    state.data.mealNotes.push(mealNoteFromRow(data));
+  }
+
+  // 食事の写真・LINE画像を Supabase Storage（meal-images バケット）へアップロードする
+  async function uploadMealImage(file, prefix) {
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `${prefix}/${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+    const { error } = await supabase.storage.from('meal-images').upload(path, file, {
+      contentType: file.type || 'image/jpeg',
+    });
+    if (error) throw error;
+    return path;
+  }
+
+  function mealImageUrl(path) {
+    if (!path || !supabase) return null;
+    const { data } = supabase.storage.from('meal-images').getPublicUrl(path);
+    return data ? data.publicUrl : null;
+  }
+
+  async function addLineMessage(memberId, sender, type, body, imageFile, sentAtIso) {
+    let imagePath = null;
+    if (type === 'image' && imageFile) {
+      imagePath = await uploadMealImage(imageFile, 'line');
+    }
+    const { data, error } = await supabase
+      .from('line_messages')
+      .insert({
+        member_id: memberId,
+        sender,
+        message_type: type,
+        body: type === 'text' ? body || null : null,
+        image_path: imagePath,
+        sent_at: sentAtIso || new Date().toISOString(),
+        is_confirmed: false,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    state.data.lineMessages.push(lineMessageFromRow(data));
+  }
+
+  async function addMealReport(memberId, label, text, imageFile, reportedAtIso) {
+    let imagePath = null;
+    if (imageFile) imagePath = await uploadMealImage(imageFile, 'meal-report');
+    const { data, error } = await supabase
+      .from('meal_reports')
+      .insert({
+        member_id: memberId,
+        meal_label: label || null,
+        member_text: text || null,
+        has_image: !!imagePath,
+        image_path: imagePath,
+        reported_at: reportedAtIso || new Date().toISOString(),
+        is_confirmed: false,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    state.data.mealReports.push(mealReportFromRow(data));
+  }
+
+  async function updateMealReport(reportId, fields) {
+    const { data, error } = await supabase.from('meal_reports').update(fields).eq('id', reportId).select().single();
+    if (error) throw error;
+    const mapped = mealReportFromRow(data);
+    const idx = state.data.mealReports.findIndex((r) => r.id === reportId);
+    if (idx >= 0) state.data.mealReports[idx] = mapped;
+  }
+
+  // ---------- Claude用フィードバックプロンプト生成 ----------
+  // 現段階ではここで組み立てたプロンプトを「コピー」してClaudeへ手動で貼り付ける運用。
+  // 将来Claude APIキーを設定した場合は、buildClaudePrompt() の結果をそのままAPIへ渡す
+  // generateAiFeedback() のような関数を追加し、下の「AIフィードバック生成」ボタンの
+  // disabled属性を外すだけで自動生成に切り替えられる構造にしてある。
+  function buildClaudePrompt(report) {
+    const member = state.data.members.find((m) => m.id === report.memberId);
+    const profile = getMealProfile(report.memberId) || {};
+    const notes = state.data.mealNotes
+      .filter((n) => n.memberId === report.memberId)
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+      .slice(0, 8);
+    const recentMessages = state.data.lineMessages
+      .filter((m) => m.memberId === report.memberId)
+      .sort((a, b) => (a.sentAt < b.sentAt ? 1 : -1))
+      .slice(0, 10)
+      .reverse();
+
+    const val = (v, suffix) => (v != null && v !== '' ? `${v}${suffix || ''}` : '未設定');
+
+    const lines = [];
+    lines.push('あなたはパーソナルトレーナーの食事アドバイスをサポートするアシスタントです。');
+    lines.push('以下の情報をもとに、会員様の今回の食事報告についてフィードバックを作成してください。');
+    lines.push('');
+    lines.push('【会員情報】');
+    lines.push(`会員名: ${member ? member.name : '不明'}`);
+    lines.push(`目的: ${val(profile.purpose)}`);
+    lines.push(`現在体重: ${val(profile.currentWeight, 'kg')}`);
+    lines.push(`目標体重: ${val(profile.targetWeight, 'kg')}`);
+    lines.push(`身長: ${val(profile.height, 'cm')}`);
+    lines.push(`1日の食事回数: ${val(profile.mealsPerDay, '回')}`);
+    lines.push('');
+    lines.push('【現在の食事方針】');
+    lines.push(`食事方針: ${val(profile.mealPolicy)}`);
+    lines.push(`現在伝えている食事ルール: ${val(profile.currentRules)}`);
+    lines.push(`主食量の目安: ${val(profile.stapleAmount)}`);
+    lines.push(`タンパク質についての指導内容: ${val(profile.proteinGuidance)}`);
+    lines.push(`脂質についての指導内容: ${val(profile.fatGuidance)}`);
+    lines.push(`野菜・食物繊維についての指導内容: ${val(profile.vegetableGuidance)}`);
+    lines.push('');
+    lines.push('【生活背景】');
+    lines.push(`生活リズム: ${val(profile.dailyRhythm)}`);
+    lines.push(`仕事: ${val(profile.occupation)}`);
+    lines.push(`運動頻度: ${val(profile.exerciseFrequency)}`);
+    lines.push(`トレーナーが注意していること: ${val(profile.trainerCautions)}`);
+    lines.push(`本人が苦手としていること: ${val(profile.memberWeakPoints)}`);
+    lines.push(`過去のダイエット歴: ${val(profile.dietHistory)}`);
+    lines.push(`その他背景: ${val(profile.otherBackground)}`);
+    lines.push(`トレーナーメモ: ${val(profile.trainerNotes)}`);
+    lines.push('');
+    lines.push('【過去の経緯（新しい順）】');
+    if (notes.length === 0) {
+      lines.push('（記録なし）');
+    } else {
+      notes.forEach((n) => lines.push(`${n.date}: ${n.content}`));
+    }
+    lines.push('');
+    lines.push('【直近のLINEトーク履歴】');
+    if (recentMessages.length === 0) {
+      lines.push('（記録なし）');
+    } else {
+      recentMessages.forEach((m) => {
+        const sender = m.sender === 'member' ? '会員' : 'トレーナー';
+        const content = m.messageType === 'text' ? m.body || '' : '（画像メッセージ）';
+        lines.push(`[${formatDateTime(m.sentAt)}] ${sender}: ${content}`);
+      });
+    }
+    lines.push('');
+    lines.push('【今回の食事報告】');
+    lines.push(`日時: ${formatDateTime(report.reportedAt)}`);
+    lines.push(`会員メッセージ: ${report.memberText || '（本文なし）'}`);
+    lines.push(`画像: ${report.hasImage ? 'あり（この会話に画像を添付しています）' : 'なし'}`);
+    lines.push('');
+    lines.push('【分析の観点】');
+    if (report.hasImage) {
+      lines.push('画像と文章の両方から、以下を確認してください:');
+      lines.push('・確認できる食材 ・主食 ・タンパク質源 ・脂質源 ・野菜 ・果物 ・飲料 ・食事全体の構成 ・食材選定 ・良かった点 ・改善できる点');
+      lines.push('※ 画像だけから正確な重量・カロリー・栄養素量を断定しないでください。');
+    } else {
+      lines.push('LINE本文から、以下を確認してください:');
+      lines.push('・食材選定 ・主食 ・タンパク質 ・脂質 ・野菜 ・食事構成 ・良かった点 ・改善できる点');
+    }
+    lines.push('');
+    lines.push(
+      '今回だけを評価するのではなく、以前伝えた内容・最近改善していること・繰り返している課題・本人の目標・生活背景を踏まえて評価してください。'
+    );
+    lines.push('');
+    lines.push('【回答形式】');
+    lines.push('以下の7項目の見出しをつけて、日本語で回答してください。');
+    lines.push('1. 今回の食事の事実整理');
+    lines.push('2. 良かった点');
+    lines.push('3. 気になる点');
+    lines.push('4. 過去との比較');
+    lines.push('5. 今回最も優先すべき改善点');
+    lines.push('6. 次の具体的アクション');
+    lines.push('7. 会員様へそのまま送れるLINEフィードバック案');
+    lines.push('');
+    lines.push('注意事項:');
+    lines.push('・フィードバックは説教調にせず、パーソナルトレーナーが会員様へ送る自然で丁寧な日本語にしてください。');
+    lines.push('・改善点は一度に増やしすぎず、優先順位の高いものを1〜2個に絞ってください。');
+
+    return lines.join('\n');
+  }
+
+  // 将来Claude APIを追加する場合の差し替え候補（現段階では未使用・呼び出されません）:
+  // async function generateAiFeedback(report) {
+  //   const prompt = buildClaudePrompt(report);
+  //   const res = await fetch('/api/claude-feedback', {
+  //     method: 'POST',
+  //     headers: { 'Content-Type': 'application/json' },
+  //     body: JSON.stringify({ prompt }),
+  //   });
+  //   const { feedback } = await res.json();
+  //   await updateMealReport(report.id, { ai_feedback: feedback });
+  //   renderMemberDetail();
+  // }
+
   // ---------- rendering ----------
   const $ = (sel) => document.querySelector(sel);
 
@@ -367,6 +698,7 @@
     renderDashboardSearch();
     renderMembersView();
     renderCalendarOverview();
+    renderMealDashboard();
     if (state.detailMemberId != null && !$('#member-detail-modal').classList.contains('hidden')) {
       renderMemberDetail();
     }
@@ -714,11 +1046,22 @@
   }
 
   // ---------- 会員詳細モーダル ----------
-  function openMemberDetail(memberId) {
+  function switchDetailTab(tab) {
+    state.detailTab = tab;
+    document.querySelectorAll('.detail-tab-panel').forEach((el) => {
+      el.classList.toggle('hidden', el.dataset.detailPanel !== tab);
+    });
+    document.querySelectorAll('.detail-tab').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.detailTab === tab);
+    });
+  }
+
+  function openMemberDetail(memberId, tab) {
     const m = state.data.members.find((x) => x.id === memberId);
     if (!m) return;
     state.detailMemberId = memberId;
     renderMemberDetail();
+    switchDetailTab(tab || 'basic');
     openModal('#member-detail-modal');
   }
 
@@ -786,6 +1129,211 @@
     $('#detail-booking-minus').dataset.id = m.id;
     $('#detail-edit-btn').dataset.id = m.id;
     $('#detail-delete-btn').dataset.id = m.id;
+
+    renderMealSupportPanel(m);
+  }
+
+  // ---------- 食事サポート パネル（会員詳細内） ----------
+  const MEAL_PROFILE_LABELS = [
+    ['purpose', '目的', ''],
+    ['currentWeight', '現在体重', 'kg'],
+    ['targetWeight', '目標体重', 'kg'],
+    ['height', '身長', 'cm'],
+    ['mealsPerDay', '1日の食事回数', '回'],
+    ['mealPolicy', '食事方針', ''],
+    ['currentRules', '現在伝えている食事ルール', ''],
+    ['stapleAmount', '主食量の目安', ''],
+    ['proteinGuidance', 'タンパク質についての指導内容', ''],
+    ['fatGuidance', '脂質についての指導内容', ''],
+    ['vegetableGuidance', '野菜・食物繊維についての指導内容', ''],
+    ['dailyRhythm', '生活リズム', ''],
+    ['occupation', '仕事', ''],
+    ['exerciseFrequency', '運動頻度', ''],
+    ['trainerCautions', 'トレーナーが注意していること', ''],
+    ['memberWeakPoints', '本人が苦手としていること', ''],
+    ['dietHistory', '過去のダイエット歴', ''],
+    ['otherBackground', 'その他背景', ''],
+    ['trainerNotes', 'トレーナーメモ', ''],
+  ];
+
+  function renderMealSupportPanel(member) {
+    renderMealProfileSummary(member);
+    renderMealNotesList(member);
+    renderLineMessagesList(member);
+    renderMealReportsList(member);
+  }
+
+  function renderMealProfileSummary(member) {
+    const p = getMealProfile(member.id) || {};
+    $('#meal-profile-summary').innerHTML = MEAL_PROFILE_LABELS.map(([key, label, suffix]) => {
+      const raw = p[key];
+      const value = raw != null && raw !== '' ? `${escapeHtml(String(raw))}${suffix}` : '未設定';
+      return `<div class="meal-profile-row"><span class="meal-profile-label">${label}</span><span class="meal-profile-value">${value}</span></div>`;
+    }).join('');
+  }
+
+  function renderMealNotesList(member) {
+    const notes = state.data.mealNotes
+      .filter((n) => n.memberId === member.id)
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    const el = $('#meal-notes-list');
+    if (notes.length === 0) {
+      el.innerHTML = `<p class="cal-overview-empty">経緯はまだありません</p>`;
+      return;
+    }
+    el.innerHTML = notes
+      .map((n) => {
+        const d = parseISO(n.date);
+        const label = `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+        return `<div class="meal-note-row"><div class="meal-note-date">${label}</div><div class="meal-note-content">${escapeHtml(n.content)}</div></div>`;
+      })
+      .join('');
+  }
+
+  function renderLineMessagesList(member) {
+    const msgs = state.data.lineMessages
+      .filter((m) => m.memberId === member.id)
+      .sort((a, b) => (a.sentAt < b.sentAt ? -1 : 1))
+      .slice(-30);
+    const el = $('#line-messages-list');
+    if (msgs.length === 0) {
+      el.innerHTML = `<p class="cal-overview-empty">トーク履歴はまだありません</p>`;
+      return;
+    }
+    el.innerHTML = msgs
+      .map((m) => {
+        const senderLabel = m.sender === 'member' ? '会員' : 'トレーナー';
+        const timeLabel = formatDateTime(m.sentAt);
+        let body;
+        if (m.messageType === 'text') {
+          body = `<div class="line-msg-text">${escapeHtml(m.body || '')}</div>`;
+        } else {
+          const url = mealImageUrl(m.imagePath);
+          body = url
+            ? `<img class="line-msg-image" src="${url}" alt="LINE画像" loading="lazy">`
+            : `<div class="line-msg-text">（画像）</div>`;
+        }
+        return `<div class="line-msg-row sender-${m.sender}"><div class="line-msg-meta">${senderLabel} ・ ${timeLabel}</div>${body}</div>`;
+      })
+      .join('');
+  }
+
+  function filteredMealReports(memberId) {
+    const filterEl = $('#meal-report-filter');
+    const filter = filterEl ? filterEl.value : 'all';
+    const now = new Date();
+    let reports = state.data.mealReports.filter((r) => r.memberId === memberId);
+    if (filter === '7d') {
+      const cutoff = addDays(now, -7).toISOString();
+      reports = reports.filter((r) => r.reportedAt >= cutoff);
+    } else if (filter === '30d') {
+      const cutoff = addDays(now, -30).toISOString();
+      reports = reports.filter((r) => r.reportedAt >= cutoff);
+    } else if (filter === 'image') {
+      reports = reports.filter((r) => r.hasImage);
+    } else if (filter === 'noimage') {
+      reports = reports.filter((r) => !r.hasImage);
+    } else if (filter === 'fbdone') {
+      reports = reports.filter((r) => r.aiFeedback || r.trainerFeedback);
+    } else if (filter === 'unconfirmed') {
+      reports = reports.filter((r) => !r.isConfirmed);
+    }
+    return reports.sort((a, b) => (a.reportedAt < b.reportedAt ? 1 : -1));
+  }
+
+  function mealReportCardHtml(r) {
+    const dateLabel = formatDateTime(r.reportedAt);
+    const imgUrl = r.hasImage ? mealImageUrl(r.imagePath) : null;
+    return `
+    <div class="meal-report-card" data-report-id="${r.id}">
+      <div class="meal-report-head">
+        <div class="meal-report-date">${dateLabel}${r.label ? ' ' + escapeHtml(r.label) : ''}</div>
+        <label class="meal-report-confirm">
+          <input type="checkbox" data-action="mr-toggle-confirm" data-id="${r.id}" ${r.isConfirmed ? 'checked' : ''}>
+          確認済み
+        </label>
+      </div>
+      ${
+        r.memberText
+          ? `<div class="meal-report-text">会員メッセージ：「${escapeHtml(r.memberText)}」</div>`
+          : `<div class="meal-report-text muted">会員メッセージはありません</div>`
+      }
+      ${
+        imgUrl
+          ? `<img class="meal-report-image" src="${imgUrl}" alt="食事写真" loading="lazy">`
+          : `<div class="meal-report-noimage">画像なし</div>`
+      }
+      <div class="meal-report-actions">
+        <button type="button" class="btn-secondary" data-action="mr-make-prompt" data-id="${r.id}">Claude用FBを作成</button>
+        <button type="button" class="btn-secondary" disabled title="Claude APIキーを設定すると有効になります（現段階は無料MVPのため未実装）">AIフィードバック生成</button>
+      </div>
+      <div class="meal-fb-fields">
+        <label>AI生成FB<textarea rows="3" data-fb-field="ai" data-id="${r.id}">${escapeHtml(r.aiFeedback || '')}</textarea></label>
+        <label>トレーナー修正版<textarea rows="3" data-fb-field="trainer" data-id="${r.id}">${escapeHtml(r.trainerFeedback || '')}</textarea></label>
+        <label>実際にLINEへ送ったFB<textarea rows="3" data-fb-field="sent" data-id="${r.id}">${escapeHtml(r.sentFeedback || '')}</textarea></label>
+      </div>
+      <div class="meal-report-actions">
+        <button type="button" class="btn-secondary" data-action="mr-save-fb" data-id="${r.id}">FBを保存</button>
+        <button type="button" class="btn-primary" data-action="mr-copy-fb" data-id="${r.id}">フィードバックをコピー</button>
+      </div>
+    </div>`;
+  }
+
+  function renderMealReportsList(member) {
+    const reports = filteredMealReports(member.id);
+    const el = $('#meal-reports-list');
+    if (reports.length === 0) {
+      el.innerHTML = `<p class="cal-overview-empty">該当する食事報告はありません</p>`;
+      return;
+    }
+    el.innerHTML = reports.map((r) => mealReportCardHtml(r)).join('');
+  }
+
+  function openPromptModal(report) {
+    $('#prompt-textarea').value = buildClaudePrompt(report);
+    openModal('#prompt-modal');
+  }
+
+  // ---------- 食事サポート ダッシュボード（トップタブ） ----------
+  function renderMealDashboard() {
+    const todayStr = todayISO();
+    const q = state.mealDashSearch.trim().toLowerCase();
+
+    const todayCount = state.data.mealReports.filter((r) => r.reportedAt.slice(0, 10) === todayStr).length;
+    const unconfirmedCount = state.data.mealReports.filter((r) => !r.isConfirmed).length;
+    const noFbCount = state.data.mealReports.filter((r) => !r.aiFeedback && !r.trainerFeedback).length;
+    $('#meal-dash-today').textContent = todayCount;
+    $('#meal-dash-unconfirmed').textContent = unconfirmedCount;
+    $('#meal-dash-nofb').textContent = noFbCount;
+
+    const latestByMember = {};
+    state.data.mealReports.forEach((r) => {
+      const cur = latestByMember[r.memberId];
+      if (!cur || r.reportedAt > cur.reportedAt) latestByMember[r.memberId] = r;
+    });
+
+    let rows = state.data.members.map((m) => ({ member: m, latest: latestByMember[m.id] })).filter((row) => row.latest);
+    if (q) rows = rows.filter((row) => row.member.name.toLowerCase().includes(q));
+    rows.sort((a, b) => (a.latest.reportedAt < b.latest.reportedAt ? 1 : -1));
+
+    const el = $('#meal-dash-list');
+    if (rows.length === 0) {
+      el.innerHTML = `<p class="cal-overview-empty">まだ食事報告がありません</p>`;
+      return;
+    }
+    el.innerHTML = rows
+      .map((row) => {
+        const unconfirmed = state.data.mealReports.filter((r) => r.memberId === row.member.id && !r.isConfirmed).length;
+        return `
+        <button type="button" class="meal-dash-row" data-action="open-detail" data-id="${row.member.id}" data-detail-tab="meal">
+          <div class="meal-dash-row-head">
+            <span class="meal-dash-name">${escapeHtml(row.member.name)}</span>
+            ${unconfirmed > 0 ? `<span class="meal-dash-badge">未確認 ${unconfirmed}</span>` : ''}
+          </div>
+          <div class="meal-dash-time">最新報告: ${formatDateTime(row.latest.reportedAt)}</div>
+        </button>`;
+      })
+      .join('');
   }
 
   // ---------- busy guard & error banner ----------
@@ -889,6 +1437,65 @@
     openModal('#done-modal');
   }
 
+  // ---------- 食事サポート: モーダルを開く ----------
+  function openMealProfileForm(memberId) {
+    const p = getMealProfile(memberId) || {};
+    $('#mp-member-id').value = memberId;
+    $('#mp-purpose').value = p.purpose || '';
+    $('#mp-current-weight').value = p.currentWeight ?? '';
+    $('#mp-target-weight').value = p.targetWeight ?? '';
+    $('#mp-height').value = p.height ?? '';
+    $('#mp-meals-per-day').value = p.mealsPerDay ?? '';
+    $('#mp-meal-policy').value = p.mealPolicy || '';
+    $('#mp-current-rules').value = p.currentRules || '';
+    $('#mp-staple-amount').value = p.stapleAmount || '';
+    $('#mp-protein-guidance').value = p.proteinGuidance || '';
+    $('#mp-fat-guidance').value = p.fatGuidance || '';
+    $('#mp-vegetable-guidance').value = p.vegetableGuidance || '';
+    $('#mp-daily-rhythm').value = p.dailyRhythm || '';
+    $('#mp-occupation').value = p.occupation || '';
+    $('#mp-exercise-frequency').value = p.exerciseFrequency || '';
+    $('#mp-trainer-cautions').value = p.trainerCautions || '';
+    $('#mp-member-weak-points').value = p.memberWeakPoints || '';
+    $('#mp-diet-history').value = p.dietHistory || '';
+    $('#mp-other-background').value = p.otherBackground || '';
+    $('#mp-trainer-notes').value = p.trainerNotes || '';
+    openModal('#meal-profile-modal');
+  }
+
+  function openMealNoteForm(memberId) {
+    $('#meal-note-member-id').value = memberId;
+    $('#meal-note-date').value = todayISO();
+    $('#meal-note-content').value = '';
+    openModal('#meal-note-modal');
+  }
+
+  function toggleLmFields() {
+    const type = $('#lm-type').value;
+    $('#lm-body-field').classList.toggle('hidden', type !== 'text');
+    $('#lm-image-field').classList.toggle('hidden', type !== 'image');
+  }
+
+  function openLineMessageForm(memberId) {
+    $('#lm-member-id').value = memberId;
+    $('#lm-sender').value = 'member';
+    $('#lm-type').value = 'text';
+    $('#lm-body').value = '';
+    $('#lm-image-file').value = '';
+    $('#lm-sent-at').value = '';
+    toggleLmFields();
+    openModal('#line-message-modal');
+  }
+
+  function openMealReportForm(memberId) {
+    $('#mr-member-id').value = memberId;
+    $('#mr-label').value = '';
+    $('#mr-text').value = '';
+    $('#mr-image-file').value = '';
+    $('#mr-reported-at').value = '';
+    openModal('#meal-report-modal');
+  }
+
   let confirmCallback = null;
   function openConfirm(message, cb) {
     $('#confirm-message').textContent = message;
@@ -976,7 +1583,12 @@
       const btn = e.target.closest('[data-action="open-detail"]');
       if (!btn) return;
       closeModal('#day-detail-modal');
-      openMemberDetail(Number(btn.dataset.id));
+      openMemberDetail(Number(btn.dataset.id), btn.dataset.detailTab);
+    });
+
+    // 会員詳細モーダル内のタブ切り替え
+    document.querySelectorAll('.detail-tab').forEach((btn) => {
+      btn.addEventListener('click', () => switchDetailTab(btn.dataset.detailTab));
     });
 
     // 会員詳細モーダル内のミニカレンダー月送り
@@ -1092,6 +1704,148 @@
         await addDoneOnDate(memberId, date);
         closeModal('#done-modal');
       });
+    });
+
+    // ---------- 食事サポート: イベント配線 ----------
+    $('#meal-profile-edit-btn').addEventListener('click', () => openMealProfileForm(state.detailMemberId));
+    $('#meal-profile-cancel-btn').addEventListener('click', () => closeModal('#meal-profile-modal'));
+    $('#meal-profile-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const memberId = Number($('#mp-member-id').value);
+      const profile = {
+        purpose: $('#mp-purpose').value,
+        currentWeight: $('#mp-current-weight').value,
+        targetWeight: $('#mp-target-weight').value,
+        height: $('#mp-height').value,
+        mealsPerDay: $('#mp-meals-per-day').value,
+        mealPolicy: $('#mp-meal-policy').value.trim(),
+        currentRules: $('#mp-current-rules').value.trim(),
+        stapleAmount: $('#mp-staple-amount').value.trim(),
+        proteinGuidance: $('#mp-protein-guidance').value.trim(),
+        fatGuidance: $('#mp-fat-guidance').value.trim(),
+        vegetableGuidance: $('#mp-vegetable-guidance').value.trim(),
+        dailyRhythm: $('#mp-daily-rhythm').value.trim(),
+        occupation: $('#mp-occupation').value.trim(),
+        exerciseFrequency: $('#mp-exercise-frequency').value.trim(),
+        trainerCautions: $('#mp-trainer-cautions').value.trim(),
+        memberWeakPoints: $('#mp-member-weak-points').value.trim(),
+        dietHistory: $('#mp-diet-history').value.trim(),
+        otherBackground: $('#mp-other-background').value.trim(),
+        trainerNotes: $('#mp-trainer-notes').value.trim(),
+      };
+      withBusyGuard(async () => {
+        await saveMealProfile(memberId, profile);
+        closeModal('#meal-profile-modal');
+        render();
+      });
+    });
+
+    $('#meal-note-add-btn').addEventListener('click', () => openMealNoteForm(state.detailMemberId));
+    $('#meal-note-cancel-btn').addEventListener('click', () => closeModal('#meal-note-modal'));
+    $('#meal-note-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const memberId = Number($('#meal-note-member-id').value);
+      const date = $('#meal-note-date').value;
+      const content = $('#meal-note-content').value.trim();
+      if (!date || !content) {
+        closeModal('#meal-note-modal');
+        return;
+      }
+      withBusyGuard(async () => {
+        await addMealNote(memberId, date, content);
+        closeModal('#meal-note-modal');
+        render();
+      });
+    });
+
+    $('#line-message-add-btn').addEventListener('click', () => openLineMessageForm(state.detailMemberId));
+    $('#lm-type').addEventListener('change', toggleLmFields);
+    $('#line-message-cancel-btn').addEventListener('click', () => closeModal('#line-message-modal'));
+    $('#line-message-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const memberId = Number($('#lm-member-id').value);
+      const sender = $('#lm-sender').value;
+      const type = $('#lm-type').value;
+      const body = $('#lm-body').value.trim();
+      const file = $('#lm-image-file').files[0] || null;
+      const sentAtRaw = $('#lm-sent-at').value;
+      const sentAtIso = sentAtRaw ? new Date(sentAtRaw).toISOString() : null;
+      withBusyGuard(async () => {
+        await addLineMessage(memberId, sender, type, body, file, sentAtIso);
+        closeModal('#line-message-modal');
+        render();
+      });
+    });
+
+    $('#meal-report-add-btn').addEventListener('click', () => openMealReportForm(state.detailMemberId));
+    $('#meal-report-cancel-btn').addEventListener('click', () => closeModal('#meal-report-modal'));
+    $('#meal-report-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const memberId = Number($('#mr-member-id').value);
+      const label = $('#mr-label').value.trim();
+      const text = $('#mr-text').value.trim();
+      const file = $('#mr-image-file').files[0] || null;
+      const reportedAtRaw = $('#mr-reported-at').value;
+      const reportedAtIso = reportedAtRaw ? new Date(reportedAtRaw).toISOString() : null;
+      withBusyGuard(async () => {
+        await addMealReport(memberId, label, text, file, reportedAtIso);
+        closeModal('#meal-report-modal');
+        render();
+      });
+    });
+
+    $('#meal-report-filter').addEventListener('change', () => {
+      const m = state.data.members.find((mm) => mm.id === state.detailMemberId);
+      if (m) renderMealReportsList(m);
+    });
+
+    $('#meal-reports-list').addEventListener('change', (e) => {
+      const cb = e.target.closest('[data-action="mr-toggle-confirm"]');
+      if (!cb) return;
+      const id = Number(cb.dataset.id);
+      withBusyGuard(async () => {
+        await updateMealReport(id, { is_confirmed: cb.checked });
+        render();
+      });
+    });
+
+    $('#meal-reports-list').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const id = Number(btn.dataset.id);
+      const report = state.data.mealReports.find((r) => r.id === id);
+      if (!report) return;
+      if (btn.dataset.action === 'mr-make-prompt') {
+        openPromptModal(report);
+      } else if (btn.dataset.action === 'mr-save-fb') {
+        const card = btn.closest('.meal-report-card');
+        const ai = card.querySelector('[data-fb-field="ai"]').value.trim();
+        const trainer = card.querySelector('[data-fb-field="trainer"]').value.trim();
+        const sent = card.querySelector('[data-fb-field="sent"]').value.trim();
+        withBusyGuard(async () => {
+          await updateMealReport(id, {
+            ai_feedback: ai || null,
+            trainer_feedback: trainer || null,
+            sent_feedback: sent || null,
+          });
+          render();
+        });
+      } else if (btn.dataset.action === 'mr-copy-fb') {
+        const text = report.sentFeedback || report.trainerFeedback || report.aiFeedback || '';
+        if (!text) {
+          alert('コピーする内容がまだありません。FB欄に入力するか、Claudeで生成した文章を貼り付けてから保存してください。');
+          return;
+        }
+        copyToClipboard(text);
+      }
+    });
+
+    $('#prompt-copy-btn').addEventListener('click', () => copyToClipboard($('#prompt-textarea').value));
+    $('#prompt-close-btn').addEventListener('click', () => closeModal('#prompt-modal'));
+
+    $('#meal-dash-search').addEventListener('input', (e) => {
+      state.mealDashSearch = e.target.value;
+      renderMealDashboard();
     });
 
     $('#confirm-cancel-btn').addEventListener('click', () => {
