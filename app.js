@@ -367,6 +367,7 @@
     renderDashboardSearch();
     renderMembersView();
     renderCalendarOverview();
+    renderNoBookingView();
     if (state.detailMemberId != null && !$('#member-detail-modal').classList.contains('hidden')) {
       renderMemberDetail();
     }
@@ -711,6 +712,27 @@
       return;
     }
     listEl.innerHTML = sorted.map((m) => memberCompactCardHtml(m, monthKey)).join('');
+  }
+
+  // ---------- 予約なしの会員 ----------
+  function renderNoBookingView() {
+    const listEl = $('#no-booking-list');
+    const badgeEl = $('#no-booking-count-badge');
+    if (!listEl) return;
+    const monthKey = state.viewMonthKey;
+    const noBooking = state.data.members
+      .filter((m) => !nextBookingEntry(m.id))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    if (badgeEl) badgeEl.textContent = state.data.members.length ? `（${noBooking.length}名）` : '';
+    if (state.data.members.length === 0) {
+      listEl.innerHTML = `<p class="empty-msg">まだ会員が登録されていません。</p>`;
+      return;
+    }
+    if (noBooking.length === 0) {
+      listEl.innerHTML = `<p class="empty-msg">全員に次回予約が入っています。</p>`;
+      return;
+    }
+    listEl.innerHTML = noBooking.map((m) => memberCompactCardHtml(m, monthKey)).join('');
   }
 
   // ---------- 会員詳細モーダル ----------
