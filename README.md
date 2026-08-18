@@ -46,15 +46,6 @@ window.SUPABASE_CONFIG = {
 ### セキュリティについて
 このアプリにはログイン機能がないため、`anonKey` を知っていれば誰でもデータを読み書きできる状態になります。URLと匿名キーが記載された `supabase-config.js` は、リポジトリを公開設定にしている場合は特に注意してください。より厳密に守りたい場合は、将来的にSupabase Authによるログイン機能の追加をおすすめします。
 
-## 食事サポート管理機能について
-
-会員詳細の「食事サポート」タブから、体重・食事方針などのプロフィール、指導の経緯、LINEトーク履歴、食事報告とそのフィードバック（AI生成FB／トレーナー修正版／実際に送ったFB）を管理できます。有料AI APIは使用しておらず、Claude用のプロンプトを自動生成して「コピー」し、Claude.aiやこのアプリへ手動で貼り付けて使う運用です。
-
-- 必要なテーブルは `supabase/migration.sql` に追加してあります（実行方法は上記と同じ）
-- LINE Messaging APIとの自動連携（Webhook）は `supabase/functions/line-webhook/` にコードだけ用意してあります。**Supabase CLIでのデプロイとLINE Developersでの設定が別途必要**です（このリポジトリ内の作業だけでは有効になりません）
-- 連携前でも、会員詳細の「食事サポート」タブから手動でトーク履歴・食事報告を追加してテストできます
-- `LINE_CHANNEL_SECRET` / `LINE_CHANNEL_ACCESS_TOKEN` は、Supabase Edge Functionsの環境変数（Secrets）にのみ設定します。GitHubやアプリのJavaScript/HTMLには一切書き込みません
-
 ## 公開方法（GitHub Pages）
 1. GitHubでこのリポジトリを開く
 2. 上部メニューの「Settings」→ 左側の「Pages」を開く
