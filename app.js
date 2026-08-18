@@ -304,6 +304,24 @@
     if (error) throw error;
   }
 
+  // 予約日を過ぎた「予約」を自動的に「実施」へ変更する
+  // （無断キャンセル等で実際には来なかった場合は、会員詳細の「実施－」で取り消してください）
+  async function autoCompletePastBookings() {
+    const today = todayISO();
+    const overdue = state.data.log.filter((e) => e.type === 'booked' && e.date < today);
+    if (overdue.length === 0) return;
+    const affectedMemberIds = new Set();
+    for (const entry of overdue) {
+      const { error } = await supabase.from('session_logs').update({ type: 'done' }).eq('id', entry.id);
+      if (error) throw error;
+      entry.type = 'done';
+      affectedMemberIds.add(entry.memberId);
+    }
+    for (const memberId of affectedMemberIds) {
+      await syncMemberCounts(memberId);
+    }
+  }
+
   async function reconcileAllMemberCounts() {
     const monthKey = todayMonthKey();
     for (const m of state.data.members) {
@@ -1215,6 +1233,7 @@
     try {
       if (!supabase) initSupabaseClient();
       await fetchAll();
+      await autoCompletePastBookings();
       render();
       showLoading(false);
       // 月が変わったタイミングなどで会員テーブルの表示用カウントを最新化する（裏側で実行）
