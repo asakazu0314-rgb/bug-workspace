@@ -386,6 +386,7 @@
     renderMembersView();
     renderCalendarOverview();
     renderNoBookingView();
+    renderTodayView();
     if (state.detailMemberId != null && !$('#member-detail-modal').classList.contains('hidden')) {
       renderMemberDetail();
     }
@@ -753,6 +754,62 @@
     listEl.innerHTML = noBooking.map((m) => memberCompactCardHtml(m, monthKey)).join('');
   }
 
+  // ---------- 今日の予定 ----------
+  function renderTodayView() {
+    const listEl = $('#today-schedule-list');
+    const labelEl = $('#today-view-date-label');
+    if (!listEl) return;
+    const today = todayISO();
+    const d = parseISO(today);
+    if (labelEl) labelEl.textContent = ` ${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS_JA[d.getDay()]})`;
+
+    const entries = state.data.log
+      .filter((e) => e.date === today)
+      .map((e) => ({ ...e, member: state.data.members.find((mm) => mm.id === e.memberId) }))
+      .sort((a, b) => {
+        const ta = a.time || '99:99';
+        const tb = b.time || '99:99';
+        if (ta !== tb) return ta < tb ? -1 : 1;
+        return (a.member ? a.member.name : '').localeCompare(b.member ? b.member.name : '');
+      });
+
+    if (entries.length === 0) {
+      listEl.innerHTML = `<p class="cal-overview-empty">今日の予定はありません</p>`;
+      return;
+    }
+
+    listEl.innerHTML = entries
+      .map((e) => {
+        const statusClass = e.type === 'done' ? 'is-done' : 'is-booked';
+        const statusLabel = e.type === 'done' ? '実施済み' : '予約';
+        const timeLabel = e.time ? e.time.slice(0, 5) : '時間未定';
+        const nameHtml = e.member
+          ? `<button type="button" class="day-detail-name" data-action="open-detail" data-id="${e.member.id}">${escapeHtml(e.member.name)}</button>`
+          : `<span class="day-detail-name">(削除済み)</span>`;
+        const actionHtml =
+          e.type === 'booked'
+            ? `<button type="button" class="day-detail-complete-btn" data-action="complete-booking" data-log-id="${e.id}" data-member-id="${e.memberId}">実施</button>`
+            : `<span class="day-detail-badge">${statusLabel}</span>`;
+        return `
+        <div class="day-detail-row ${statusClass}">
+          <span class="day-detail-time">${timeLabel}</span>
+          ${nameHtml}
+          ${actionHtml}
+        </div>`;
+      })
+      .join('');
+  }
+
+  // 特定の予約1件を「実施」に変更する（今日の予定タブから使用）
+  async function markBookingDone(logId, memberId) {
+    const { error } = await supabase.from('session_logs').update({ type: 'done' }).eq('id', logId);
+    if (error) throw error;
+    const entry = state.data.log.find((e) => e.id === logId);
+    if (entry) entry.type = 'done';
+    await syncMemberCounts(memberId);
+    render();
+  }
+
   // ---------- 会員詳細モーダル ----------
   function openMemberDetail(memberId) {
     const m = state.data.members.find((x) => x.id === memberId);
@@ -1010,6 +1067,15 @@
       openDayDetail(cell.dataset.date);
     });
     $('#day-detail-close-btn').addEventListener('click', () => closeModal('#day-detail-modal'));
+
+    // 今日の予定: 予約行の「実施」ボタン
+    $('#today-schedule-list').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action="complete-booking"]');
+      if (!btn) return;
+      const logId = Number(btn.dataset.logId);
+      const memberId = Number(btn.dataset.memberId);
+      withBusyGuard(() => markBookingDone(logId, memberId));
+    });
 
     // 会員カード・検索結果・日別詳細の会員名 → 会員詳細モーダルを開く（共通の委譲ハンドラ）
     document.body.addEventListener('click', (e) => {

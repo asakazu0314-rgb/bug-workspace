@@ -102,6 +102,16 @@
     </section>
   </div>
 
+  <!-- 今日の予定 -->
+  <div id="view-today" class="app-view hidden">
+    <section class="calendar-overview-panel">
+      <div class="cal-overview-head">
+        <h2>今日の予定<span id="today-view-date-label"></span></h2>
+      </div>
+      <div id="today-schedule-list" class="day-detail-list"></div>
+    </section>
+  </div>
+
   <!-- 会員一覧 -->
   <div id="view-members" class="app-view hidden">
     <section class="members-toolbar">
@@ -200,6 +210,7 @@
 
 <nav id="app-tabs" class="app-tabs">
   <button type="button" class="app-tab active" data-view="dashboard">ダッシュボード</button>
+  <button type="button" class="app-tab" data-view="today">今日の予定</button>
   <button type="button" class="app-tab" data-view="members">会員一覧</button>
   <button type="button" class="app-tab" data-view="calendar">月間カレンダー</button>
   <button type="button" class="app-tab" data-view="no-booking">予約なし</button>
