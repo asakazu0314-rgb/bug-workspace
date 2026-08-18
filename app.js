@@ -786,26 +786,27 @@
         const nameHtml = e.member
           ? `<button type="button" class="day-detail-name" data-action="open-detail" data-id="${e.member.id}">${escapeHtml(e.member.name)}</button>`
           : `<span class="day-detail-name">(削除済み)</span>`;
-        const actionHtml =
+        const toggleHtml =
           e.type === 'booked'
-            ? `<button type="button" class="day-detail-complete-btn" data-action="complete-booking" data-log-id="${e.id}" data-member-id="${e.memberId}">実施</button>`
-            : `<span class="day-detail-badge">${statusLabel}</span>`;
+            ? `<button type="button" class="day-detail-complete-btn" data-action="set-log-type" data-log-id="${e.id}" data-member-id="${e.memberId}" data-type="done">実施</button>`
+            : `<button type="button" class="day-detail-revert-btn" data-action="set-log-type" data-log-id="${e.id}" data-member-id="${e.memberId}" data-type="booked">予約に戻す</button>`;
         return `
         <div class="day-detail-row ${statusClass}">
           <span class="day-detail-time">${timeLabel}</span>
           ${nameHtml}
-          ${actionHtml}
+          <span class="day-detail-badge">${statusLabel}</span>
+          ${toggleHtml}
         </div>`;
       })
       .join('');
   }
 
-  // 特定の予約1件を「実施」に変更する（今日の予定タブから使用）
-  async function markBookingDone(logId, memberId) {
-    const { error } = await supabase.from('session_logs').update({ type: 'done' }).eq('id', logId);
+  // 予約⇔実施済みの状態を切り替える（今日の予定タブから使用）
+  async function setLogType(logId, memberId, type) {
+    const { error } = await supabase.from('session_logs').update({ type }).eq('id', logId);
     if (error) throw error;
     const entry = state.data.log.find((e) => e.id === logId);
-    if (entry) entry.type = 'done';
+    if (entry) entry.type = type;
     await syncMemberCounts(memberId);
     render();
   }
@@ -1068,13 +1069,14 @@
     });
     $('#day-detail-close-btn').addEventListener('click', () => closeModal('#day-detail-modal'));
 
-    // 今日の予定: 予約行の「実施」ボタン
+    // 今日の予定: 予約⇔実施済みの切り替えボタン
     $('#today-schedule-list').addEventListener('click', (e) => {
-      const btn = e.target.closest('[data-action="complete-booking"]');
+      const btn = e.target.closest('[data-action="set-log-type"]');
       if (!btn) return;
       const logId = Number(btn.dataset.logId);
       const memberId = Number(btn.dataset.memberId);
-      withBusyGuard(() => markBookingDone(logId, memberId));
+      const type = btn.dataset.type;
+      withBusyGuard(() => setLogType(logId, memberId, type));
     });
 
     // 会員カード・検索結果・日別詳細の会員名 → 会員詳細モーダルを開く（共通の委譲ハンドラ）
