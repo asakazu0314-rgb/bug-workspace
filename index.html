@@ -203,6 +203,17 @@
     <div id="no-booking-list" class="members-list"></div>
   </div>
 
+  <!-- Gyms連携: 自動反映できなかった予約通知の確認 -->
+  <div id="view-gyms" class="app-view hidden">
+    <section class="members-toolbar">
+      <div class="members-toolbar-head">
+        <h2>Gyms確認<span id="gyms-unresolved-badge"></span></h2>
+      </div>
+      <p class="data-tools-desc">Gymsからの予約通知のうち、自動で反映できなかったものです。内容を確認し、必要であれば会員一覧・カレンダーから手動で予約を調整してください。確認済みのものは「解決済みにする」を押してください。</p>
+    </section>
+    <div id="gyms-unmatched-list" class="members-list"></div>
+  </div>
+
   <footer class="app-footer">
     <p>BUG泡瀬店 専用ツール ・ 会員データはSupabaseに保存されます</p>
   </footer>
@@ -214,6 +225,7 @@
   <button type="button" class="app-tab" data-view="members">会員一覧</button>
   <button type="button" class="app-tab" data-view="calendar">月間カレンダー</button>
   <button type="button" class="app-tab" data-view="no-booking">予約なし</button>
+  <button type="button" class="app-tab" data-view="gyms">Gyms確認</button>
 </nav>
 
 <div id="loading-overlay" class="loading-overlay hidden">

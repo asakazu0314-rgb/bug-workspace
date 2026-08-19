@@ -54,3 +54,56 @@ create policy "Allow anon full access to session_logs" on public.session_logs
   to anon
   using (true)
   with check (true);
+
+-- 4) Gyms連携: 会員とGymsの顧客IDを紐付ける列を追加します（任意項目）
+--    一度会員名で自動的に紐付けが成功したら、以降はこの顧客IDで確実に照合できるようにします
+alter table public.members
+  add column if not exists gyms_customer_id text;
+
+create unique index if not exists members_gyms_customer_id_idx
+  on public.members (gyms_customer_id)
+  where gyms_customer_id is not null;
+
+-- 5) Gyms連携: 自動反映できなかった予約通知を記録するテーブルを新規作成します
+--    （会員名が一致しない、対象の予約が見つからない、などの場合にここへ記録され、
+--      アプリの「Gyms確認」タブで内容を確認できます）
+create table if not exists public.gyms_unmatched_events (
+  id bigint generated always as identity primary key,
+  event_type text not null check (event_type in ('booking', 'cancel', 'change')),
+  reason text not null,
+  customer_name text not null,
+  gyms_customer_id text,
+  scheduled_date date,
+  scheduled_time time,
+  old_scheduled_date date,
+  old_scheduled_time time,
+  raw_subject text,
+  resolved boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists gyms_unmatched_events_resolved_idx
+  on public.gyms_unmatched_events (resolved);
+
+-- 6) Gyms連携: 処理済みメールを記録し、同じメールを二重に反映しないようにするテーブルです
+create table if not exists public.gyms_processed_messages (
+  gmail_message_id text primary key,
+  processed_at timestamptz not null default now()
+);
+
+alter table public.gyms_unmatched_events enable row level security;
+alter table public.gyms_processed_messages enable row level security;
+
+drop policy if exists "Allow anon full access to gyms_unmatched_events" on public.gyms_unmatched_events;
+create policy "Allow anon full access to gyms_unmatched_events" on public.gyms_unmatched_events
+  for all
+  to anon
+  using (true)
+  with check (true);
+
+drop policy if exists "Allow anon full access to gyms_processed_messages" on public.gyms_processed_messages;
+create policy "Allow anon full access to gyms_processed_messages" on public.gyms_processed_messages
+  for all
+  to anon
+  using (true)
+  with check (true);

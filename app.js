@@ -122,7 +122,7 @@
   // ---------- state ----------
   const state = {
     settings: loadLocalSettings(),
-    data: { members: [], log: [] },
+    data: { members: [], log: [], gymsUnmatched: [] },
     viewMonthKey: todayMonthKey(),
     calendarMonth: {}, // memberId -> 'YYYY-MM'（会員詳細のミニカレンダーは月全体のナビゲーションと独立）
     activeView: 'dashboard', // 'dashboard' | 'members' | 'calendar'
@@ -176,6 +176,28 @@
 
   function logFromRow(row) {
     return { id: row.id, memberId: row.member_id, date: row.session_date, type: row.type, time: row.session_time || null };
+  }
+
+  const GYMS_EVENT_LABELS = { booking: '新規予約', cancel: '予約キャンセル', change: '予約変更' };
+  const GYMS_REASON_LABELS = {
+    no_matching_member: '会員名が一致しませんでした',
+    booking_not_found: '取り消す予約が見つかりませんでした',
+    parse_failed: 'メール内容を解析できませんでした',
+  };
+
+  function gymsUnmatchedFromRow(row) {
+    return {
+      id: row.id,
+      eventType: row.event_type,
+      reason: row.reason,
+      customerName: row.customer_name,
+      gymsCustomerId: row.gyms_customer_id || null,
+      scheduledDate: row.scheduled_date || null,
+      scheduledTime: row.scheduled_time || null,
+      oldScheduledDate: row.old_scheduled_date || null,
+      oldScheduledTime: row.old_scheduled_time || null,
+      rawSubject: row.raw_subject || '',
+    };
   }
 
   const FIELD_LABELS = {
@@ -288,6 +310,18 @@
     if (logsRes.error) throw logsRes.error;
     state.data.members = membersRes.data.map(memberFromRow);
     state.data.log = logsRes.data.map(logFromRow);
+
+    // Gyms連携用テーブル（migration.sql未実行の環境では存在しないため、失敗しても他機能を止めない）
+    try {
+      const gymsRes = await supabase
+        .from('gyms_unmatched_events')
+        .select('*')
+        .eq('resolved', false)
+        .order('created_at', { ascending: false });
+      state.data.gymsUnmatched = gymsRes.error ? [] : gymsRes.data.map(gymsUnmatchedFromRow);
+    } catch (e) {
+      state.data.gymsUnmatched = [];
+    }
   }
 
   // 今月分の実施・予約件数を members.completed_sessions / booked_sessions に反映する
@@ -387,6 +421,7 @@
     renderCalendarOverview();
     renderNoBookingView();
     renderTodayView();
+    renderGymsView();
     if (state.detailMemberId != null && !$('#member-detail-modal').classList.contains('hidden')) {
       renderMemberDetail();
     }
@@ -755,6 +790,55 @@
       return;
     }
     listEl.innerHTML = noBooking.map((m) => memberCompactCardHtml(m, monthKey)).join('');
+  }
+
+  // ---------- Gyms連携: 自動反映できなかった予約通知の確認 ----------
+  function formatGymsDateTime(dateStr, timeStr) {
+    if (!dateStr) return '不明';
+    const d = parseISO(dateStr);
+    const label = `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS_JA[d.getDay()]})`;
+    return timeStr ? `${label} ${timeStr.slice(0, 5)}` : label;
+  }
+
+  function renderGymsView() {
+    const listEl = $('#gyms-unmatched-list');
+    const badgeEl = $('#gyms-unresolved-badge');
+    if (!listEl) return;
+    const items = state.data.gymsUnmatched;
+    if (badgeEl) badgeEl.textContent = items.length ? `（${items.length}件）` : '';
+    if (items.length === 0) {
+      listEl.innerHTML = `<p class="empty-msg">確認が必要な項目はありません。</p>`;
+      return;
+    }
+    listEl.innerHTML = items
+      .map((e) => {
+        const typeLabel = GYMS_EVENT_LABELS[e.eventType] || e.eventType;
+        const reasonLabel = GYMS_REASON_LABELS[e.reason] || e.reason;
+        const whenLabel = formatGymsDateTime(e.scheduledDate, e.scheduledTime);
+        const oldWhenHtml =
+          e.eventType === 'change' && e.oldScheduledDate
+            ? `<div class="mcard-sub">変更前：${formatGymsDateTime(e.oldScheduledDate, e.oldScheduledTime)}</div>`
+            : '';
+        return `
+      <div class="mcard gyms-card">
+        <div class="mcard-head">
+          <div class="mcard-name">${escapeHtml(e.customerName)}</div>
+          <span class="mcard-status gyms-type-${e.eventType}">${typeLabel}</span>
+        </div>
+        <div class="mcard-sub">日時：${whenLabel}</div>
+        ${oldWhenHtml}
+        <div class="mcard-sub">理由：${escapeHtml(reasonLabel)}</div>
+        <button type="button" class="btn-secondary gyms-resolve-btn" data-action="resolve-gyms" data-id="${e.id}">解決済みにする</button>
+      </div>`;
+      })
+      .join('');
+  }
+
+  async function resolveGymsEvent(id) {
+    const { error } = await supabase.from('gyms_unmatched_events').update({ resolved: true }).eq('id', id);
+    if (error) throw error;
+    state.data.gymsUnmatched = state.data.gymsUnmatched.filter((e) => e.id !== id);
+    render();
   }
 
   // ---------- 今日の予定 ----------
@@ -1131,6 +1215,14 @@
       const memberId = Number(btn.dataset.memberId);
       const type = btn.dataset.type;
       withBusyGuard(() => setLogType(logId, memberId, type));
+    });
+
+    // Gyms確認: 解決済みにするボタン
+    $('#gyms-unmatched-list').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action="resolve-gyms"]');
+      if (!btn) return;
+      const id = Number(btn.dataset.id);
+      withBusyGuard(() => resolveGymsEvent(id));
     });
 
     // 会員カード・検索結果・日別詳細の会員名 → 会員詳細モーダルを開く（共通の委譲ハンドラ）

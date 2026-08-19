@@ -490,6 +490,12 @@ body {
 .status-achieved { background: rgba(26,138,74,0.12); color: var(--good); }
 .status-ontrack { background: rgba(31,111,235,0.12); color: var(--primary-dark); }
 .status-short { background: rgba(192,57,43,0.1); color: var(--warn); }
+.gyms-type-booking { background: rgba(31,111,235,0.12); color: var(--primary-dark); }
+.gyms-type-change { background: rgba(184,131,17,0.12); color: #8a6600; }
+.gyms-type-cancel { background: rgba(192,57,43,0.1); color: var(--warn); }
+
+.gyms-card { display: block; }
+.gyms-resolve-btn { margin-top: 10px; width: 100%; }
 
 .mcard-course { font-size: 0.85rem; color: var(--primary-dark); font-weight: 600; margin-top: 4px; }
 .mcard-sub { font-size: 0.82rem; color: var(--text-muted); margin-top: 2px; }
