@@ -390,6 +390,9 @@
     if (state.detailMemberId != null && !$('#member-detail-modal').classList.contains('hidden')) {
       renderMemberDetail();
     }
+    if (memberDayContext && !$('#member-day-modal').classList.contains('hidden')) {
+      renderMemberDayModal();
+    }
   }
 
   function renderMonthNav() {
@@ -635,7 +638,7 @@
           ? '<span class="cal-mark cal-booked">●</span>'
           : '';
       cells.push(
-        `<div class="cal-cell${dateStr === today ? ' is-today' : ''}"><span class="cal-day">${day}</span>${mark}</div>`
+        `<button type="button" class="cal-cell${dateStr === today ? ' is-today' : ''}" data-action="cal-day" data-date="${dateStr}" data-id="${member.id}"><span class="cal-day">${day}</span>${mark}</button>`
       );
     }
 
@@ -987,6 +990,57 @@
     openModal('#done-modal');
   }
 
+  // ---------- 会員カレンダーの日付タップ: その日の実施・予約を追加/削除 ----------
+  let memberDayContext = null;
+
+  function openMemberDayModal(memberId, dateStr) {
+    memberDayContext = { memberId, dateStr };
+    renderMemberDayModal();
+    openModal('#member-day-modal');
+  }
+
+  function renderMemberDayModal() {
+    if (!memberDayContext) return;
+    const { memberId, dateStr } = memberDayContext;
+    const member = state.data.members.find((m) => m.id === memberId);
+    if (!member) {
+      memberDayContext = null;
+      closeModal('#member-day-modal');
+      return;
+    }
+    const d = parseISO(dateStr);
+    const today = todayISO();
+    $('#member-day-title').textContent = `${member.name}｜${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS_JA[d.getDay()]})`;
+
+    const entries = state.data.log
+      .filter((e) => e.memberId === memberId && e.date === dateStr)
+      .sort((a, b) => {
+        const ta = a.time || '99:99';
+        const tb = b.time || '99:99';
+        return ta < tb ? -1 : ta > tb ? 1 : 0;
+      });
+
+    $('#member-day-entries-list').innerHTML = entries.length
+      ? entries
+          .map((e) => {
+            const statusClass = e.type === 'done' ? 'is-done' : 'is-booked';
+            const statusLabel = e.type === 'done' ? '実施済み' : '予約';
+            const timeLabel = e.time ? e.time.slice(0, 5) : '時間未定';
+            return `
+          <div class="day-detail-row ${statusClass}">
+            <span class="day-detail-time">${timeLabel}</span>
+            <span class="day-detail-badge">${statusLabel}</span>
+            <button type="button" class="day-detail-delete-btn" data-action="delete-day-entry" data-log-id="${e.id}" aria-label="削除">✕</button>
+          </div>`;
+          })
+          .join('')
+      : `<p class="cal-overview-empty">この日の記録はまだありません</p>`;
+
+    $('#member-day-add-done-btn').classList.toggle('hidden', dateStr > today);
+    $('#member-day-booking-row').classList.toggle('hidden', dateStr < today);
+    $('#member-day-booking-time').value = '';
+  }
+
   let confirmCallback = null;
   function openConfirm(message, cb) {
     $('#confirm-message').textContent = message;
@@ -1098,8 +1152,31 @@
       } else if (btn.dataset.action === 'cal-next') {
         state.calendarMonth[id] = addMonths(getCalendarMonthKey(id), 1);
         renderMemberDetail();
+      } else if (btn.dataset.action === 'cal-day') {
+        openMemberDayModal(id, btn.dataset.date);
       }
     });
+
+    // 会員カレンダーの日付タップ用モーダル
+    $('#member-day-add-done-btn').addEventListener('click', () => {
+      if (!memberDayContext) return;
+      withBusyGuard(() => addDoneOnDate(memberDayContext.memberId, memberDayContext.dateStr));
+    });
+    $('#member-day-add-booking-btn').addEventListener('click', () => {
+      if (!memberDayContext) return;
+      const time = $('#member-day-booking-time').value || null;
+      withBusyGuard(() => addBooking(memberDayContext.memberId, memberDayContext.dateStr, time));
+    });
+    $('#member-day-entries-list').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action="delete-day-entry"]');
+      if (!btn || !memberDayContext) return;
+      const logId = Number(btn.dataset.logId);
+      withBusyGuard(async () => {
+        await deleteLogRow(logId, memberDayContext.memberId);
+        render();
+      });
+    });
+    $('#member-day-close-btn').addEventListener('click', () => closeModal('#member-day-modal'));
 
     // 会員詳細モーダルの操作ボタン
     $('#detail-done-plus').addEventListener('click', () => {

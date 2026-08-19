@@ -295,6 +295,24 @@
   </div>
 </div>
 
+<!-- 会員カレンダーの日付タップ: 実施・予約の追加/削除 モーダル -->
+<div id="member-day-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3 id="member-day-title"></h3>
+    <div id="member-day-entries-list" class="day-detail-list"></div>
+    <div class="member-day-actions">
+      <button type="button" id="member-day-add-done-btn" class="btn-secondary">実施を追加</button>
+      <div id="member-day-booking-row" class="member-day-booking-row">
+        <input id="member-day-booking-time" type="time" class="member-day-time-input" aria-label="予約の時間（任意）">
+        <button type="button" id="member-day-add-booking-btn" class="btn-secondary">予約を追加</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" id="member-day-close-btn" class="btn-secondary">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <!-- 日別 予定詳細 モーダル -->
 <div id="day-detail-modal" class="modal hidden">
   <div class="modal-box">
