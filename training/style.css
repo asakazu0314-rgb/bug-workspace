@@ -1,0 +1,286 @@
+/* training app: 共通トークンは ../style.css を継承し、ここでは追加分のみ定義 */
+
+.conn-status {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.conn-status.ok { color: var(--good); }
+.conn-status.error { color: var(--warn); }
+
+.hidden { display: none !important; }
+
+.setup-banner {
+  background: #fff8e1;
+  border: 1px solid #f0d68a;
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 16px 0;
+}
+.setup-banner h2 { margin: 0 0 8px; font-size: 1rem; }
+.setup-banner p { margin: 0; font-size: 0.9rem; line-height: 1.5; }
+
+.btn-secondary.small, .btn-danger.small, .btn-primary.small {
+  padding: 8px 14px;
+  min-height: 38px;
+  font-size: 0.9rem;
+}
+
+/* toolbar / search */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0;
+  align-items: center;
+}
+.search-input {
+  flex: 1;
+  min-width: 160px;
+  font-size: 1rem;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg);
+  color: var(--text);
+}
+.sort-buttons { display: flex; gap: 8px; }
+
+.header-actions { display: flex; gap: 8px; }
+
+/* member card extras */
+.member-card { cursor: pointer; }
+.member-card .pair-badge {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: var(--primary-dark);
+  background: #e8f0fe;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+/* screens */
+.screen { display: none; }
+.screen.active { display: block; }
+
+.detail-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0;
+  flex-wrap: wrap;
+}
+.detail-topbar-actions { display: flex; gap: 8px; }
+
+.member-profile-card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.member-profile-card h2 { margin: 0 0 6px; }
+.member-profile-meta { color: var(--text-muted); font-size: 0.9rem; display: flex; gap: 16px; flex-wrap: wrap; }
+.member-profile-pair { margin-top: 8px; font-size: 0.85rem; color: var(--primary-dark); }
+
+/* tabs */
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 4px;
+  border-bottom: 1px solid var(--border);
+}
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 10px 14px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 3px solid transparent;
+  min-height: 44px;
+}
+.tab-btn.active { color: var(--primary-dark); border-bottom-color: var(--primary); }
+.tab-panel { display: none; padding-top: 14px; }
+.tab-panel.active { display: block; }
+
+/* forms */
+.inline-form {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 14px 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.inline-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.inline-form input, .inline-form textarea, .inline-form select {
+  font-size: 1rem;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--bg);
+  font-family: inherit;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+@media (min-width: 640px) {
+  .form-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.form-row { display: flex; gap: 10px; }
+.form-row input { flex: 1; }
+
+/* metric / chart */
+.metric-selector {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 14px 0 8px;
+}
+.metric-btn {
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  min-height: 38px;
+}
+.metric-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+.chart-box {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  height: 260px;
+  position: relative;
+}
+
+.list-heading { font-size: 1rem; margin: 20px 0 10px; }
+
+/* body records list */
+.records-list, .exercises-list, .sessions-list { display: flex; flex-direction: column; gap: 10px; }
+.record-row, .exercise-row {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 10px 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.record-row .record-main { font-size: 0.9rem; }
+.record-row .record-date { font-weight: 700; margin-right: 10px; }
+.record-row .record-note { color: var(--text-muted); font-size: 0.8rem; margin-top: 2px; }
+
+/* training sessions */
+.training-top-actions { margin: 14px 0; }
+.exercise-chart-picker { margin: 10px 0; }
+.exercise-chart-picker label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.exercise-chart-picker select {
+  font-size: 1rem;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text);
+}
+
+.session-card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.session-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.session-card-head h4 { margin: 0; font-size: 1rem; }
+.session-members { font-size: 0.78rem; color: var(--text-muted); }
+
+.session-exercise-block {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.session-exercise-block h5 { margin: 0 0 8px; font-size: 0.95rem; }
+
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  padding: 4px 0;
+}
+.set-row .set-no { color: var(--text-muted); min-width: 3.5em; }
+.set-row .set-val { font-weight: 600; }
+
+.set-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.set-add-row input {
+  width: 80px;
+  font-size: 0.95rem;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.session-add-exercise-btn { margin-top: 12px; }
+
+/* pair checkboxes */
+.pair-field { margin-top: 4px; }
+.pair-field-label { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px; }
+.pair-checkboxes { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; }
+.pair-checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.or-divider { text-align: center; color: var(--text-muted); font-size: 0.8rem; }
+
+.empty-msg { color: var(--text-muted); text-align: center; padding: 24px 0; }
+
+@media (prefers-color-scheme: dark) {
+  .setup-banner { background: #3a2f0f; border-color: #6b5620; }
+  .member-card .pair-badge { background: #223047; }
+  .inline-form input, .inline-form textarea, .inline-form select,
+  .exercise-chart-picker select, .set-add-row input, .search-input {
+    background: #14161a;
+  }
+}

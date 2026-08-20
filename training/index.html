@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>トレーニング記録 | BUG泡瀬店</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BUGトレーニング記録">
+<meta name="theme-color" content="#1f6feb">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <header class="app-header">
+    <h1>BUG泡瀬店 トレーニング記録</h1>
+    <div id="conn-status" class="conn-status">接続確認中…</div>
+  </header>
+
+  <!-- 設定未完了バナー -->
+  <section id="setup-banner" class="setup-banner hidden">
+    <h2>⚠️ Supabaseの設定が必要です</h2>
+    <p>
+      training/config.js に、あなたのSupabaseプロジェクトの「URL」と「anon key」を
+      入力してください。手順は training/README.md に書いてあります。
+    </p>
+  </section>
+
+  <main id="main-area" class="hidden">
+
+    <!-- ================= 会員一覧画面 ================= -->
+    <section id="screen-members" class="screen active">
+      <div class="toolbar">
+        <input id="member-search" type="search" placeholder="会員名で検索" class="search-input">
+        <div class="sort-buttons">
+          <button id="sort-name-btn" class="btn-secondary small">名前順</button>
+          <button id="sort-recent-btn" class="btn-secondary small">直近の記録順</button>
+        </div>
+      </div>
+      <div class="members-header">
+        <h2>会員一覧</h2>
+        <div class="header-actions">
+          <button id="open-exercises-btn" class="btn-secondary">種目マスタ</button>
+          <button id="add-member-btn" class="btn-primary">＋ 会員を追加</button>
+        </div>
+      </div>
+      <div id="members-list" class="members-list"></div>
+    </section>
+
+    <!-- ================= 会員詳細画面 ================= -->
+    <section id="screen-member-detail" class="screen">
+      <div class="detail-topbar">
+        <button id="back-to-members-btn" class="btn-secondary small">← 一覧へ</button>
+        <div class="detail-topbar-actions">
+          <button id="edit-member-btn" class="btn-secondary small">プロフィール編集</button>
+          <button id="delete-member-btn" class="btn-danger small">会員を削除</button>
+        </div>
+      </div>
+
+      <div class="member-profile-card">
+        <h2 id="detail-member-name">-</h2>
+        <div id="detail-member-meta" class="member-profile-meta"></div>
+        <div id="detail-member-pair" class="member-profile-pair"></div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="body">身体データ</button>
+        <button class="tab-btn" data-tab="training">トレーニング</button>
+      </div>
+
+      <!-- 身体データタブ -->
+      <div id="tab-body" class="tab-panel active">
+        <form id="body-record-form" class="inline-form">
+          <div class="form-grid">
+            <label>記録日
+              <input id="body-date" type="date" required>
+            </label>
+            <label>体重(kg)
+              <input id="body-weight" type="number" step="0.1" inputmode="decimal">
+            </label>
+            <label>体脂肪(%)
+              <input id="body-fat" type="number" step="0.1" inputmode="decimal">
+            </label>
+            <label>体内年齢
+              <input id="body-age" type="number" step="1" inputmode="numeric">
+            </label>
+            <label>筋肉量(kg)
+              <input id="body-muscle" type="number" step="0.1" inputmode="decimal">
+            </label>
+          </div>
+          <label>備考
+            <textarea id="body-note" rows="2" placeholder="体調・食事メモなど"></textarea>
+          </label>
+          <button type="submit" class="btn-primary">身体データを記録</button>
+        </form>
+
+        <div class="metric-selector" id="body-metric-selector">
+          <button class="metric-btn active" data-metric="weight">体重</button>
+          <button class="metric-btn" data-metric="body_fat">体脂肪</button>
+          <button class="metric-btn" data-metric="body_age">体内年齢</button>
+          <button class="metric-btn" data-metric="muscle_mass">筋肉量</button>
+        </div>
+        <div class="chart-box">
+          <canvas id="body-chart"></canvas>
+        </div>
+
+        <h3 class="list-heading">身体データ履歴</h3>
+        <div id="body-records-list" class="records-list"></div>
+      </div>
+
+      <!-- トレーニングタブ -->
+      <div id="tab-training" class="tab-panel">
+        <div class="training-top-actions">
+          <button id="new-session-btn" class="btn-primary">＋ 新しいセッションを記録</button>
+        </div>
+
+        <div class="exercise-chart-picker">
+          <label>種目の推移グラフ
+            <select id="exercise-chart-select"><option value="">種目を選択</option></select>
+          </label>
+        </div>
+        <div class="chart-box">
+          <canvas id="exercise-chart"></canvas>
+        </div>
+
+        <h3 class="list-heading">セッション記録</h3>
+        <div id="sessions-list" class="sessions-list"></div>
+      </div>
+    </section>
+
+    <!-- ================= 種目マスタ画面 ================= -->
+    <section id="screen-exercises" class="screen">
+      <div class="detail-topbar">
+        <button id="back-from-exercises-btn" class="btn-secondary small">← 一覧へ</button>
+      </div>
+      <h2>種目マスタ</h2>
+      <form id="exercise-add-form" class="inline-form">
+        <div class="form-row">
+          <input id="new-exercise-name" type="text" placeholder="新しい種目名（例：ベンチプレス）" required>
+          <button type="submit" class="btn-primary">追加</button>
+        </div>
+      </form>
+      <div id="exercises-list" class="exercises-list"></div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>BUG泡瀬店 専用ツール ・ データはSupabase上に保存され、端末間でリアルタイム共有されます</p>
+  </footer>
+</div>
+
+<!-- 会員 追加/編集 モーダル -->
+<div id="member-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3 id="member-form-title">会員を追加</h3>
+    <form id="member-form">
+      <input type="hidden" id="member-id">
+      <label>氏名
+        <input id="member-name" type="text" required placeholder="例）山田 太郎">
+      </label>
+      <label>身長(cm)
+        <input id="member-height" type="number" step="0.1" inputmode="decimal">
+      </label>
+      <label>目標
+        <textarea id="member-goal" rows="2" placeholder="例）3ヶ月で体脂肪-5%"></textarea>
+      </label>
+      <div id="member-pair-field" class="pair-field">
+        <div class="pair-field-label">ペア会員（同時にセッションを記録する相手）</div>
+        <div id="member-pair-checkboxes" class="pair-checkboxes"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="member-cancel-btn" class="btn-secondary">キャンセル</button>
+        <button type="submit" class="btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 新規セッション モーダル -->
+<div id="session-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>新しいセッション</h3>
+    <form id="session-form">
+      <label>セッション日
+        <input id="session-date" type="date" required>
+      </label>
+      <div id="session-pair-field" class="pair-field hidden">
+        <div class="pair-field-label">同時に記録するペア会員</div>
+        <div id="session-pair-checkboxes" class="pair-checkboxes"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="session-cancel-btn" class="btn-secondary">キャンセル</button>
+        <button type="submit" class="btn-primary">開始</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 種目追加(セッション内) モーダル -->
+<div id="session-exercise-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>種目を追加</h3>
+    <form id="session-exercise-form">
+      <label>種目
+        <select id="session-exercise-select"></select>
+      </label>
+      <div class="or-divider">または</div>
+      <label>新しい種目名
+        <input id="session-exercise-new-name" type="text" placeholder="新規種目名を入力すると追加されます">
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="session-exercise-cancel-btn" class="btn-secondary">キャンセル</button>
+        <button type="submit" class="btn-primary">追加</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 確認 モーダル -->
+<div id="confirm-modal" class="modal hidden">
+  <div class="modal-box">
+    <p id="confirm-message"></p>
+    <div class="modal-actions">
+      <button type="button" id="confirm-cancel-btn" class="btn-secondary">キャンセル</button>
+      <button type="button" id="confirm-ok-btn" class="btn-danger">実行</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+<script src="config.js" defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>
