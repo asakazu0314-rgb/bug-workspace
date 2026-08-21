@@ -1,5 +1,20 @@
 /* training app: 共通トークンは ../style.css を継承し、ここでは追加分のみ定義 */
 
+/* 見出しは青系のアクセントカラーで統一 */
+h2, h3, h4, h5,
+.list-heading,
+.member-profile-card h2,
+.session-card-head h4,
+.setup-banner h2 {
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+/* 全体的に余白を広めに */
+#app { padding-top: 20px; }
+.members-header { margin: 20px 0 16px; }
+.tabs { margin: 20px 0 6px; }
+
 .conn-status {
   font-size: 0.8rem;
   color: var(--text-muted);
@@ -49,16 +64,48 @@
 .header-actions { display: flex; gap: 8px; }
 
 /* member card extras */
-.member-card { cursor: pointer; }
+.members-list { gap: 18px; }
+.member-card {
+  cursor: pointer;
+  padding: 20px 22px;
+}
+.member-card .member-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.member-card .member-name { font-size: 1.15rem; }
+.member-card .member-meta { margin-top: 8px; }
 .member-card .pair-badge {
   display: inline-block;
-  margin-top: 6px;
   font-size: 0.75rem;
   color: var(--primary-dark);
   background: #e8f0fe;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 999px;
+  white-space: nowrap;
 }
+
+.member-snapshot {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.snapshot-tile {
+  background: var(--bg);
+  border-radius: 12px;
+  padding: 12px 10px;
+  text-align: center;
+}
+.snapshot-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
+.snapshot-value { font-size: 1.4rem; font-weight: 800; color: var(--primary-dark); line-height: 1.1; }
+.snapshot-value .snapshot-unit { font-size: 0.7rem; font-weight: 600; margin-left: 2px; }
+.snapshot-date { font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; }
 
 /* screens */
 .screen { display: none; }
@@ -77,12 +124,12 @@
 .member-profile-card {
   background: var(--card-bg);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 22px 24px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
-.member-profile-card h2 { margin: 0 0 6px; }
+.member-profile-card h2 { margin: 0 0 8px; }
 .member-profile-meta { color: var(--text-muted); font-size: 0.9rem; display: flex; gap: 16px; flex-wrap: wrap; }
-.member-profile-pair { margin-top: 8px; font-size: 0.85rem; color: var(--primary-dark); }
+.member-profile-pair { margin-top: 10px; font-size: 0.85rem; color: var(--primary-dark); }
 
 /* tabs */
 .tabs {
@@ -109,12 +156,12 @@
 .inline-form {
   background: var(--card-bg);
   border-radius: var(--radius);
-  padding: 16px;
-  margin: 14px 0;
+  padding: 22px 24px;
+  margin: 18px 0;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 .inline-form label {
   display: flex;
@@ -164,20 +211,20 @@
 .chart-box {
   background: var(--card-bg);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 18px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   height: 260px;
   position: relative;
 }
 
-.list-heading { font-size: 1rem; margin: 20px 0 10px; }
+.list-heading { font-size: 1.05rem; margin: 26px 0 14px; }
 
 /* body records list */
-.records-list, .exercises-list, .sessions-list { display: flex; flex-direction: column; gap: 10px; }
+.records-list, .exercises-list, .sessions-list { display: flex; flex-direction: column; gap: 14px; }
 .record-row, .exercise-row {
   background: var(--card-bg);
   border-radius: 12px;
-  padding: 10px 14px;
+  padding: 14px 18px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   display: flex;
   justify-content: space-between;
@@ -211,7 +258,7 @@
 .session-card {
   background: var(--card-bg);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: 20px 22px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 .session-card-head {
@@ -279,6 +326,7 @@
 @media (prefers-color-scheme: dark) {
   .setup-banner { background: #3a2f0f; border-color: #6b5620; }
   .member-card .pair-badge { background: #223047; }
+  .snapshot-tile { background: #14161a; }
   .inline-form input, .inline-form textarea, .inline-form select,
   .exercise-chart-picker select, .set-add-row input, .search-input {
     background: #14161a;
