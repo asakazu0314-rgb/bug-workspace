@@ -203,6 +203,17 @@
     <div id="no-booking-list" class="members-list"></div>
   </div>
 
+  <!-- 予約アプローチが必要な会員 -->
+  <div id="view-approach" class="app-view hidden">
+    <section class="members-toolbar">
+      <div class="members-toolbar-head">
+        <h2>予約アプローチ<span id="approach-count-badge"></span></h2>
+      </div>
+      <p class="data-tools-desc">週目標・月目標のペースに対して、今週または今月末までにあと何回の予約が必要かを表示します。予約案内が必要な会員をすぐに確認できます。</p>
+    </section>
+    <div id="approach-list" class="members-list"></div>
+  </div>
+
   <footer class="app-footer">
     <p>BUG泡瀬店 専用ツール ・ 会員データはSupabaseに保存されます</p>
   </footer>
@@ -214,6 +225,7 @@
   <button type="button" class="app-tab" data-view="members">会員一覧</button>
   <button type="button" class="app-tab" data-view="calendar">月間カレンダー</button>
   <button type="button" class="app-tab" data-view="no-booking">予約なし</button>
+  <button type="button" class="app-tab" data-view="approach">予約アプローチ</button>
 </nav>
 
 <div id="loading-overlay" class="loading-overlay hidden">
