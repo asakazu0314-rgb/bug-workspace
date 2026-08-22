@@ -40,9 +40,8 @@
     bodyMetric: 'weight',
     bodyRecords: [],
     sessions: [],
-    pairSessionDates: {}, // date -> [memberId,...]（ペア相手の同日セッション）
+    pairSessions: {}, // memberId -> セッション配列（ペア相手それぞれの全セッション、種目記録つき）
     pendingExerciseBlocks: {}, // sessionId -> [{exerciseId, exerciseName}]（まだ記録0件の種目ブロック）
-    activeSession: null, // { memberIds, sessionIdByMember, date }（ペア同時記録中のセッション）
     sessionExerciseModalSessionId: null,
     bodyChart: null,
     exerciseChart: null,
@@ -101,19 +100,27 @@
     state.sessions = (data || []).sort((a, b) => b.date.localeCompare(a.date) || b.session_no - a.session_no);
   }
 
-  async function fetchPairSessionDatesFor(member) {
+  // ペア相手それぞれの全セッション（種目・セット記録つき）を取得
+  async function fetchPairSessionsFor(member) {
     const pairs = pairMembersOf(member);
     if (pairs.length === 0) return {};
     const ids = pairs.map((p) => p.id);
-    const { data } = await sb.from('training_sessions').select('member_id,date').in('member_id', ids);
+    const { data } = await sb
+      .from('training_sessions')
+      .select('*, training_records(*, exercises(id,name))')
+      .in('member_id', ids)
+      .order('date', { ascending: false });
     const map = {};
-    (data || []).forEach((r) => { (map[r.date] = map[r.date] || []).push(r.member_id); });
+    (data || []).forEach((s) => { (map[s.member_id] = map[s.member_id] || []).push(s); });
     return map;
   }
 
-  async function refreshPairSessionDates() {
+  // 現在の会員の自分のセッションとペア相手のセッションをまとめて再取得し、トレーニングタブを再描画
+  async function refreshTrainingData() {
+    await fetchSessions(state.currentMemberId);
     const m = state.members.find((x) => x.id === state.currentMemberId);
-    state.pairSessionDates = m ? await fetchPairSessionDatesFor(m) : {};
+    state.pairSessions = m ? await fetchPairSessionsFor(m) : {};
+    renderTrainingTab();
   }
 
   // ---------- derived data ----------
@@ -157,18 +164,16 @@
     return [...real, ...pending.map((p) => ({ exerciseId: p.exerciseId, exerciseName: p.exerciseName, sets: [] }))];
   }
 
-  function sessionOtherMembersLabel(s) {
-    const ids = (state.pairSessionDates && state.pairSessionDates[s.date]) || [];
-    if (ids.length === 0) return '';
-    const names = ids.map((id) => { const m = state.members.find((x) => x.id === id); return m ? m.name : null; }).filter(Boolean);
-    return names.join('、');
-  }
-
-  function mirrorTargetsFor(sessionId) {
-    if (state.activeSession && Object.values(state.activeSession.sessionIdByMember).includes(sessionId)) {
-      return Object.values(state.activeSession.sessionIdByMember);
-    }
-    return [sessionId];
+  // 指定した日付にペア相手が持っているセッションを、会員名つきで返す
+  function partnerSessionsOnDate(date) {
+    const result = [];
+    Object.keys(state.pairSessions).forEach((memberId) => {
+      const member = state.members.find((m) => m.id === memberId);
+      (state.pairSessions[memberId] || [])
+        .filter((s) => s.date === date)
+        .forEach((s) => result.push({ session: s, memberName: member ? member.name : '' }));
+    });
+    return result;
   }
 
   // ---------- screen / modal control ----------
@@ -385,16 +390,14 @@
     </div>`;
   }
 
-  function sessionCardHtml(s) {
+  function sessionCardHtml(s, partnerName) {
     const blocks = blocksForSession(s);
-    const others = sessionOtherMembersLabel(s);
     return `
-    <div class="session-card" data-session-id="${s.id}">
+    <div class="session-card${partnerName ? ' session-card-partner' : ''}" data-session-id="${s.id}">
       <div class="session-card-head">
-        <h4>${escapeHtml(s.date)}（${s.session_no}回目）</h4>
+        <h4>${partnerName ? `<span class="partner-tag">ペア: ${escapeHtml(partnerName)}</span>` : ''}${escapeHtml(s.date)}（${s.session_no}回目）</h4>
         <button class="btn-link danger" data-action="delete-session" data-id="${s.id}">セッション削除</button>
       </div>
-      ${others ? `<div class="session-members">同時記録: ${escapeHtml(others)}</div>` : ''}
       ${blocks.map((b) => exerciseBlockHtml(s.id, b)).join('')}
       <button class="btn-secondary small session-add-exercise-btn" data-action="add-exercise" data-session-id="${s.id}">＋ 種目を追加</button>
     </div>`;
@@ -406,7 +409,13 @@
       el.innerHTML = `<p class="empty-msg">セッション記録がまだありません。</p>`;
       return;
     }
-    el.innerHTML = state.sessions.map(sessionCardHtml).join('');
+    el.innerHTML = state.sessions.map((s) => {
+      const ownCard = sessionCardHtml(s, null);
+      const partnerCards = partnerSessionsOnDate(s.date)
+        .map((p) => sessionCardHtml(p.session, p.memberName))
+        .join('');
+      return ownCard + partnerCards;
+    }).join('');
   }
 
   // ---------- rendering: exercises master ----------
@@ -430,14 +439,13 @@
   async function openMemberDetail(id) {
     state.currentMemberId = id;
     state.pendingExerciseBlocks = {};
-    state.activeSession = null;
     state.selectedExerciseIdForChart = null;
     $('#body-date').value = '';
     showScreen('#screen-member-detail');
     setActiveTab('body');
     const m = state.members.find((x) => x.id === id);
     await Promise.all([fetchBodyRecords(id), fetchSessions(id)]);
-    state.pairSessionDates = await fetchPairSessionDatesFor(m);
+    state.pairSessions = await fetchPairSessionsFor(m);
     renderMemberDetail();
   }
 
@@ -494,18 +502,14 @@
   }
 
   async function addSetToSession(sessionId, exerciseId, weight, reps, weightUnit, repsUnit) {
-    const targets = mirrorTargetsFor(sessionId);
-    for (const sid of targets) {
-      const { count } = await sb.from('training_records').select('id', { count: 'exact', head: true }).eq('session_id', sid).eq('exercise_id', exerciseId);
-      const nextSetNo = (count || 0) + 1;
-      const { error } = await sb.from('training_records').insert({
-        session_id: sid, exercise_id: exerciseId, set_no: nextSetNo,
-        weight, reps, weight_unit: weightUnit, reps_unit: repsUnit,
-      });
-      if (error) alert('保存に失敗しました: ' + error.message);
-    }
-    await fetchSessions(state.currentMemberId);
-    renderTrainingTab();
+    const { count } = await sb.from('training_records').select('id', { count: 'exact', head: true }).eq('session_id', sessionId).eq('exercise_id', exerciseId);
+    const nextSetNo = (count || 0) + 1;
+    const { error } = await sb.from('training_records').insert({
+      session_id: sessionId, exercise_id: exerciseId, set_no: nextSetNo,
+      weight, reps, weight_unit: weightUnit, reps_unit: repsUnit,
+    });
+    if (error) { alert('保存に失敗しました: ' + error.message); return; }
+    await refreshTrainingData();
   }
 
   // ---------- realtime sync ----------
@@ -521,7 +525,8 @@
       if ($('#screen-member-detail').classList.contains('active') && state.currentMemberId) {
         await fetchBodyRecords(state.currentMemberId);
         await fetchSessions(state.currentMemberId);
-        await refreshPairSessionDates();
+        const m = state.members.find((x) => x.id === state.currentMemberId);
+        state.pairSessions = m ? await fetchPairSessionsFor(m) : {};
         renderMemberDetail();
       }
     }, 400);
@@ -661,7 +666,7 @@
       const box = $('#session-pair-checkboxes');
       if (pairs.length) {
         field.classList.remove('hidden');
-        box.innerHTML = pairs.map((p) => `<label><input type="checkbox" value="${p.id}"> ${escapeHtml(p.name)}</label>`).join('');
+        box.innerHTML = pairs.map((p) => `<label><input type="checkbox" value="${p.id}" checked> ${escapeHtml(p.name)}</label>`).join('');
       } else {
         field.classList.add('hidden');
         box.innerHTML = '';
@@ -676,21 +681,16 @@
       const date = $('#session-date').value;
       const checkedIds = [...document.querySelectorAll('#session-pair-checkboxes input:checked')].map((i) => i.value);
       const memberIds = [state.currentMemberId, ...checkedIds];
-      const sessionIdByMember = {};
       for (const mid of memberIds) {
         const { count } = await sb.from('training_sessions').select('id', { count: 'exact', head: true }).eq('member_id', mid);
         const sessionNo = (count || 0) + 1;
-        const { data, error } = await sb.from('training_sessions').insert({ member_id: mid, date, session_no: sessionNo }).select().single();
+        const { error } = await sb.from('training_sessions').insert({ member_id: mid, date, session_no: sessionNo });
         if (error) { alert('セッション作成に失敗しました: ' + error.message); return; }
-        sessionIdByMember[mid] = data.id;
       }
-      state.activeSession = { memberIds, sessionIdByMember, date };
       state.pendingExerciseBlocks = {};
       closeModal('#session-modal');
-      await fetchSessions(state.currentMemberId);
       await fetchMemberSnapshots();
-      await refreshPairSessionDates();
-      renderTrainingTab();
+      await refreshTrainingData();
     });
 
     $('#sessions-list').addEventListener('click', async (e) => {
@@ -698,9 +698,8 @@
       if (delSessionBtn) {
         openConfirm('このセッションを削除します。よろしいですか？', async () => {
           await sb.from('training_sessions').delete().eq('id', delSessionBtn.dataset.id);
-          await fetchSessions(state.currentMemberId);
           await fetchMemberSnapshots();
-          renderTrainingTab();
+          await refreshTrainingData();
         });
         return;
       }
@@ -722,8 +721,7 @@
       const delSetBtn = e.target.closest('button[data-action="delete-set"]');
       if (delSetBtn) {
         await sb.from('training_records').delete().eq('id', delSetBtn.dataset.id);
-        await fetchSessions(state.currentMemberId);
-        renderTrainingTab();
+        await refreshTrainingData();
       }
     });
 
@@ -766,13 +764,10 @@
       }
       if (!exerciseId) { alert('種目を選択するか、新しい種目名を入力してください。'); return; }
       const exercise = state.exercises.find((ex) => ex.id === exerciseId);
-      const targets = mirrorTargetsFor(sessionId);
-      targets.forEach((sid) => {
-        if (!state.pendingExerciseBlocks[sid]) state.pendingExerciseBlocks[sid] = [];
-        if (!state.pendingExerciseBlocks[sid].some((b) => b.exerciseId === exerciseId)) {
-          state.pendingExerciseBlocks[sid].push({ exerciseId, exerciseName: exercise.name });
-        }
-      });
+      if (!state.pendingExerciseBlocks[sessionId]) state.pendingExerciseBlocks[sessionId] = [];
+      if (!state.pendingExerciseBlocks[sessionId].some((b) => b.exerciseId === exerciseId)) {
+        state.pendingExerciseBlocks[sessionId].push({ exerciseId, exerciseName: exercise.name });
+      }
       closeModal('#session-exercise-modal');
       renderTrainingTab();
     });
