@@ -1,0 +1,11 @@
+{
+  "name": "BUG泡瀬店 トレーニング記録",
+  "short_name": "BUGトレ記録",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#1f6feb",
+  "icons": [
+    { "src": "icon.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
