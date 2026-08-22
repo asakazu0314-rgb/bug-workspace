@@ -31,8 +31,6 @@
     members: [],
     exercises: [],
     lastRecordDateByMember: {},
-    bodySnapshotByMember: {},
-    sessionSnapshotByMember: {},
     memberSearch: '',
     memberSort: 'name', // 'name' | 'recent'
     currentMemberId: null,
@@ -61,26 +59,13 @@
     state.exercises = data || [];
   }
 
-  // 会員一覧カードに表示する「最新の身体データ」「最新セッション」のスナップショットを取得
-  async function fetchMemberSnapshots() {
-    const bodyLatest = {};
-    const { data: br } = await sb.from('body_records').select('member_id,date,weight,body_fat,body_age,muscle_mass').order('date', { ascending: true });
-    (br || []).forEach((r) => { bodyLatest[r.member_id] = r; }); // 昇順なので最後に代入されたものが最新
-
-    const sessionLatest = {};
-    const { data: ts } = await sb.from('training_sessions').select('member_id,date,session_no').order('date', { ascending: true }).order('session_no', { ascending: true });
-    (ts || []).forEach((r) => { sessionLatest[r.member_id] = r; });
-
+  // 会員一覧の「直近の記録順」ソート・表示用に、各会員の最終記録日を取得
+  async function fetchLastRecordDates() {
     const map = {};
-    state.members.forEach((m) => {
-      const bd = bodyLatest[m.id] ? bodyLatest[m.id].date : null;
-      const sd = sessionLatest[m.id] ? sessionLatest[m.id].date : null;
-      const last = [bd, sd].filter(Boolean).sort().pop();
-      if (last) map[m.id] = last;
-    });
-
-    state.bodySnapshotByMember = bodyLatest;
-    state.sessionSnapshotByMember = sessionLatest;
+    const { data: br } = await sb.from('body_records').select('member_id,date');
+    (br || []).forEach((r) => { if (!map[r.member_id] || r.date > map[r.member_id]) map[r.member_id] = r.date; });
+    const { data: ts } = await sb.from('training_sessions').select('member_id,date');
+    (ts || []).forEach((r) => { if (!map[r.member_id] || r.date > map[r.member_id]) map[r.member_id] = r.date; });
     state.lastRecordDateByMember = map;
   }
 
@@ -201,30 +186,20 @@
   // ---------- rendering: members ----------
   function memberCardHtml(m) {
     const pairs = pairMembersOf(m);
-    const body = state.bodySnapshotByMember[m.id];
-    const session = state.sessionSnapshotByMember[m.id];
+    const last = state.lastRecordDateByMember[m.id];
+    const initial = m.name ? m.name.trim().charAt(0) : '?';
     return `
     <div class="member-card" data-id="${m.id}">
       <div class="member-card-head">
+        <div class="member-avatar">${escapeHtml(initial)}</div>
         <div class="member-name">${escapeHtml(m.name)}</div>
-        ${pairs.length ? `<div class="pair-badge">ペア: ${escapeHtml(pairs.map((p) => p.name).join('、'))}</div>` : ''}
       </div>
       <div class="member-meta">
         ${m.height ? `<div>身長: ${escapeHtml(String(m.height))}cm</div>` : ''}
         ${m.goal ? `<div>目標: ${escapeHtml(m.goal)}</div>` : ''}
+        <div>直近の記録: ${last ? escapeHtml(last) : '記録なし'}</div>
       </div>
-      <div class="member-snapshot">
-        <div class="snapshot-tile">
-          <div class="snapshot-label">最新の体重</div>
-          <div class="snapshot-value">${body && body.weight != null ? `${body.weight}<span class="snapshot-unit">kg</span>` : '-'}</div>
-          <div class="snapshot-date">${body ? escapeHtml(body.date) : '記録なし'}</div>
-        </div>
-        <div class="snapshot-tile">
-          <div class="snapshot-label">最新セッション</div>
-          <div class="snapshot-value">${session ? `${session.session_no}<span class="snapshot-unit">回目</span>` : '-'}</div>
-          <div class="snapshot-date">${session ? escapeHtml(session.date) : '記録なし'}</div>
-        </div>
-      </div>
+      ${pairs.length ? `<div class="pair-badge">ペア: ${escapeHtml(pairs.map((p) => p.name).join('、'))}</div>` : ''}
     </div>`;
   }
 
@@ -519,7 +494,7 @@
     refreshTimer = setTimeout(async () => {
       await fetchMembers();
       await fetchExercises();
-      await fetchMemberSnapshots();
+      await fetchLastRecordDates();
       if ($('#screen-members').classList.contains('active')) renderMembers();
       if ($('#screen-exercises').classList.contains('active')) renderExercisesList();
       if ($('#screen-member-detail').classList.contains('active') && state.currentMemberId) {
@@ -588,7 +563,7 @@
       await updateMemberPairs(memberId, checkedIds);
       closeModal('#member-modal');
       await fetchMembers();
-      await fetchMemberSnapshots();
+      await fetchLastRecordDates();
       renderMembers();
       if (state.currentMemberId === memberId) renderMemberDetail();
     });
@@ -607,7 +582,7 @@
         const { error } = await sb.from('members').delete().eq('id', m.id);
         if (error) { alert('削除に失敗しました: ' + error.message); return; }
         await fetchMembers();
-        await fetchMemberSnapshots();
+        await fetchLastRecordDates();
         showScreen('#screen-members');
         renderMembers();
       });
@@ -642,7 +617,7 @@
       e.target.reset();
       $('#body-date').value = todayISO();
       await fetchBodyRecords(state.currentMemberId);
-      await fetchMemberSnapshots();
+      await fetchLastRecordDates();
       renderBodyTab();
     });
 
@@ -652,7 +627,7 @@
       openConfirm('この身体データを削除します。よろしいですか？', async () => {
         await sb.from('body_records').delete().eq('id', btn.dataset.id);
         await fetchBodyRecords(state.currentMemberId);
-        await fetchMemberSnapshots();
+        await fetchLastRecordDates();
         renderBodyTab();
       });
     });
@@ -689,7 +664,7 @@
       }
       state.pendingExerciseBlocks = {};
       closeModal('#session-modal');
-      await fetchMemberSnapshots();
+      await fetchLastRecordDates();
       await refreshTrainingData();
     });
 
@@ -698,7 +673,7 @@
       if (delSessionBtn) {
         openConfirm('このセッションを削除します。よろしいですか？', async () => {
           await sb.from('training_sessions').delete().eq('id', delSessionBtn.dataset.id);
-          await fetchMemberSnapshots();
+          await fetchLastRecordDates();
           await refreshTrainingData();
         });
         return;
@@ -842,7 +817,7 @@
     $('#main-area').classList.remove('hidden');
     await fetchMembers();
     await fetchExercises();
-    await fetchMemberSnapshots();
+    await fetchLastRecordDates();
     renderMembers();
     setupRealtime();
   }
