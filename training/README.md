@@ -8,6 +8,7 @@
 - 2名以上の会員を「ペア」として紐付け、トレーニング記録を同時入力
 - 体重・体脂肪・体内年齢・筋肉量を記録し、それぞれ折れ線グラフで推移を確認
 - セッション（1回目、2回目…）ごとにトレーニング種目・重量・回数をセット単位で記録
+  - 重量は「kg入力」のほか「自重」を選択可能、回数は「回」のほか「秒」（プランクなど時間で行う種目）を選択可能
 - 種目はマスタ管理で自由に追加・編集・削除可能
 - 種目ごとの「重量・回数」の推移グラフ
 - Supabaseを使い、iPad／iPhone間でデータをリアルタイム同期
@@ -36,6 +37,11 @@
    SUPABASE_ANON_KEY: 'xxxxxxxx...',
    ```
 
+### データベースの更新（機能追加時）
+アプリに新しい入力項目が追加された場合、`supabase-schema.sql` の中身にも変更が入ることがあります。
+その際は、変更後の `supabase-schema.sql` の中身をもう一度すべてコピーして「SQL Editor」に貼り付け、「Run」を実行してください。
+既存のデータが消えることはなく、不足している列だけが安全に追加される内容になっています。
+
 ### 4. GitHub Pagesで公開する
 ルートの `README.md` と同じ手順でGitHub Pagesを有効にしている場合、
 `https://<ユーザー名>.github.io/bug-workspace/training/` でこのアプリにアクセスできます。
@@ -60,7 +66,9 @@ Safariの共有ボタン→「ホーム画面に追加」で、アプリのよ�
 - `body_records`（身体データ）: id, member_id, date, weight, body_fat, body_age, muscle_mass, note
 - `exercises`（種目マスタ）: id, name
 - `training_sessions`（セッション）: id, member_id, date, session_no
-- `training_records`（種目ごとの記録）: id, session_id, exercise_id, set_no, weight, reps
+- `training_records`（種目ごとの記録）: id, session_id, exercise_id, set_no, weight, reps, weight_unit, reps_unit
+  - weight_unit: `kg`（重量入力）/ `bodyweight`（自重）
+  - reps_unit: `reps`（回数）/ `seconds`（秒数）
 
 ペア機能は、紙のフォーマットにある「pair_id」を発展させ、同じ `pair_group_id` を持つ会員同士を
 ペア（3人以上のグループも可）として扱う方式にしています。

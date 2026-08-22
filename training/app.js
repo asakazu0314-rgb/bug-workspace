@@ -348,6 +348,13 @@
     });
   }
 
+  function formatWeightDisplay(set) {
+    return set.weight_unit === 'bodyweight' ? '自重' : `${valOrDash(set.weight)}kg`;
+  }
+  function formatRepsDisplay(set) {
+    return set.reps_unit === 'seconds' ? `${valOrDash(set.reps)}秒` : `${valOrDash(set.reps)}回`;
+  }
+
   function exerciseBlockHtml(sessionId, block) {
     return `
     <div class="session-exercise-block" data-exercise-id="${block.exerciseId}">
@@ -355,12 +362,24 @@
       ${block.sets.map((set) => `
         <div class="set-row" data-record-id="${set.id}">
           <span class="set-no">${set.set_no}セット目</span>
-          <span class="set-val">${valOrDash(set.weight)}kg × ${valOrDash(set.reps)}回</span>
+          <span class="set-val">${formatWeightDisplay(set)} × ${formatRepsDisplay(set)}</span>
           <button class="btn-link danger" data-action="delete-set" data-id="${set.id}">削除</button>
         </div>`).join('')}
       <div class="set-add-row">
-        <input type="number" step="0.5" inputmode="decimal" placeholder="重量kg" class="set-weight-input">
-        <input type="number" step="1" inputmode="numeric" placeholder="回数" class="set-reps-input">
+        <div class="unit-pair">
+          <select class="set-weight-unit-select">
+            <option value="kg">kg</option>
+            <option value="bodyweight">自重</option>
+          </select>
+          <input type="number" step="0.5" inputmode="decimal" placeholder="重量" class="set-weight-input">
+        </div>
+        <div class="unit-pair">
+          <input type="number" step="1" inputmode="numeric" placeholder="回数" class="set-reps-input">
+          <select class="set-reps-unit-select">
+            <option value="reps">回</option>
+            <option value="seconds">秒</option>
+          </select>
+        </div>
         <button class="btn-secondary small" data-action="add-set" data-session-id="${sessionId}" data-exercise-id="${block.exerciseId}">セット追加</button>
       </div>
     </div>`;
@@ -474,12 +493,15 @@
     openModal('#session-exercise-modal');
   }
 
-  async function addSetToSession(sessionId, exerciseId, weight, reps) {
+  async function addSetToSession(sessionId, exerciseId, weight, reps, weightUnit, repsUnit) {
     const targets = mirrorTargetsFor(sessionId);
     for (const sid of targets) {
       const { count } = await sb.from('training_records').select('id', { count: 'exact', head: true }).eq('session_id', sid).eq('exercise_id', exerciseId);
       const nextSetNo = (count || 0) + 1;
-      const { error } = await sb.from('training_records').insert({ session_id: sid, exercise_id: exerciseId, set_no: nextSetNo, weight, reps });
+      const { error } = await sb.from('training_records').insert({
+        session_id: sid, exercise_id: exerciseId, set_no: nextSetNo,
+        weight, reps, weight_unit: weightUnit, reps_unit: repsUnit,
+      });
       if (error) alert('保存に失敗しました: ' + error.message);
     }
     await fetchSessions(state.currentMemberId);
@@ -688,10 +710,12 @@
       const addSetBtn = e.target.closest('button[data-action="add-set"]');
       if (addSetBtn) {
         const block = addSetBtn.closest('.session-exercise-block');
-        const weight = numOrNull(block.querySelector('.set-weight-input').value);
+        const weightUnit = block.querySelector('.set-weight-unit-select').value;
+        const weight = weightUnit === 'bodyweight' ? null : numOrNull(block.querySelector('.set-weight-input').value);
+        const repsUnit = block.querySelector('.set-reps-unit-select').value;
         const reps = numOrNull(block.querySelector('.set-reps-input').value);
         if (weight === null && reps === null) return;
-        await addSetToSession(addSetBtn.dataset.sessionId, addSetBtn.dataset.exerciseId, weight, reps);
+        await addSetToSession(addSetBtn.dataset.sessionId, addSetBtn.dataset.exerciseId, weight, reps, weightUnit, repsUnit);
         return;
       }
 
@@ -706,6 +730,20 @@
     $('#exercise-chart-select').addEventListener('change', (e) => {
       state.selectedExerciseIdForChart = e.target.value || null;
       renderExerciseChart();
+    });
+
+    $('#sessions-list').addEventListener('change', (e) => {
+      const sel = e.target.closest('.set-weight-unit-select');
+      if (!sel) return;
+      const input = sel.closest('.unit-pair').querySelector('.set-weight-input');
+      if (sel.value === 'bodyweight') {
+        input.value = '';
+        input.disabled = true;
+        input.placeholder = '自重';
+      } else {
+        input.disabled = false;
+        input.placeholder = '重量';
+      }
     });
 
     $('#session-exercise-cancel-btn').addEventListener('click', () => closeModal('#session-exercise-modal'));

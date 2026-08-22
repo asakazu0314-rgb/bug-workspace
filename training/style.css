@@ -290,15 +290,32 @@ h2, h3, h4, h5,
 
 .set-add-row {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
   margin-top: 8px;
   flex-wrap: wrap;
+}
+.set-add-row .unit-pair {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 .set-add-row input {
   width: 80px;
   font-size: 0.95rem;
   padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+}
+.set-add-row input:disabled {
+  opacity: 0.5;
+  background: var(--border);
+}
+.set-add-row select {
+  font-size: 0.9rem;
+  padding: 8px 6px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
@@ -328,7 +345,7 @@ h2, h3, h4, h5,
   .member-card .pair-badge { background: #223047; }
   .snapshot-tile { background: #14161a; }
   .inline-form input, .inline-form textarea, .inline-form select,
-  .exercise-chart-picker select, .set-add-row input, .search-input {
+  .exercise-chart-picker select, .set-add-row input, .set-add-row select, .search-input {
     background: #14161a;
   }
 }
