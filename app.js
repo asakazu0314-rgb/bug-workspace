@@ -256,15 +256,6 @@
     return { done, booked, target, remaining, rate, status };
   }
 
-  // 今週の実施/予約/残り必要数をまとめて算出する
-  function memberWeekStats(member, range) {
-    const done = doneInRange(member.id, range.start, range.end);
-    const booked = bookedInRange(member.id, range.start, range.end);
-    const target = member.weeklyFreq || 0;
-    const remaining = Math.max(target - done - booked, 0);
-    return { done, booked, target, remaining };
-  }
-
   // 直近の未来の予約（日付＋時間）を1件返す
   function nextBookingEntry(memberId) {
     const today = todayISO();
@@ -767,50 +758,77 @@
     listEl.innerHTML = noBooking.map((m) => memberCompactCardHtml(m, monthKey)).join('');
   }
 
-  // ---------- 予約アプローチ（週目標・月目標に対して不足している会員） ----------
-  function approachCardHtml(row) {
-    const m = row.member;
-    const next = formatNextSession(m.id);
-    return `
-    <button type="button" class="mcard approach-card" data-action="open-detail" data-id="${m.id}">
-      <div class="mcard-head">
-        <div class="mcard-name">${escapeHtml(m.name)}</div>
-        <span class="mcard-status status-short">要アプローチ</span>
-      </div>
-      <div class="mcard-course">${courseLabel(m.course)}</div>
-      <div class="approach-grid">
-        <div class="approach-item"><span>今週あと</span><strong>${row.week.remaining}回</strong></div>
-        <div class="approach-item"><span>今月末まであと</span><strong>${row.month.remaining}回</strong></div>
-      </div>
-      <div class="mcard-sub">契約残り：${m.remainingContract}回 ・ 次回：${next ? escapeHtml(next) : '未定'}</div>
-    </button>`;
+  // ---------- 予約アプローチ（各週の実施済み状況が週目標に届いていない会員） ----------
+  // 今月に入ってから今週までの、月〜日曜の週区切りを生成する
+  function monthWeekRanges(monthKey) {
+    const [y, m] = monthKey.split('-').map(Number);
+    const firstOfMonth = new Date(y, m - 1, 1);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const weeks = [];
+    let ws = getWeekStart(firstOfMonth);
+    while (ws <= today) {
+      weeks.push({ start: isoDate(ws), end: isoDate(addDays(ws, 6)), key: isoDate(ws) });
+      ws = addDays(ws, 7);
+    }
+    return weeks;
+  }
+
+  function approachWeekBlockHtml(range) {
+    const rows = state.data.members
+      .filter((m) => (m.weeklyFreq || 0) > 0)
+      .map((m) => ({ member: m, done: doneInRange(m.id, range.start, range.end), target: m.weeklyFreq }))
+      .filter((r) => r.done < r.target)
+      .sort((a, b) => (b.target - b.done) - (a.target - a.done) || a.member.name.localeCompare(b.member.name, 'ja'));
+
+    if (rows.length === 0) return { html: '', memberIds: [] };
+
+    const rowsHtml = rows
+      .map(
+        (r) => `
+      <div class="day-detail-row">
+        <button type="button" class="day-detail-name" data-action="open-detail" data-id="${r.member.id}">${escapeHtml(r.member.name)}</button>
+        <span class="day-detail-badge">実施 ${r.done}/${r.target}回</span>
+        <span class="approach-shortfall-badge">不足${r.target - r.done}回</span>
+      </div>`
+      )
+      .join('');
+
+    return {
+      html: `
+        <section class="approach-week-block">
+          <h3 class="approach-week-title">${weekLabel(range)}</h3>
+          <div class="day-detail-list">${rowsHtml}</div>
+        </section>`,
+      memberIds: rows.map((r) => r.member.id),
+    };
   }
 
   function renderApproachView() {
-    const listEl = $('#approach-list');
+    const containerEl = $('#approach-list');
     const badgeEl = $('#approach-count-badge');
-    if (!listEl) return;
-    const monthKey = todayMonthKey();
-    const weekRange = currentWeekRange();
-    const rows = state.data.members
-      .map((m) => ({ member: m, month: memberMonthStats(m, monthKey), week: memberWeekStats(m, weekRange) }))
-      .filter((r) => r.month.remaining > 0 || r.week.remaining > 0)
-      .sort((a, b) => {
-        if (b.week.remaining !== a.week.remaining) return b.week.remaining - a.week.remaining;
-        if (b.month.remaining !== a.month.remaining) return b.month.remaining - a.month.remaining;
-        return a.member.name.localeCompare(b.member.name, 'ja');
-      });
+    if (!containerEl) return;
 
-    if (badgeEl) badgeEl.textContent = state.data.members.length ? `（${rows.length}名）` : '';
     if (state.data.members.length === 0) {
-      listEl.innerHTML = `<p class="empty-msg">まだ会員が登録されていません。</p>`;
+      if (badgeEl) badgeEl.textContent = '';
+      containerEl.innerHTML = `<p class="empty-msg">まだ会員が登録されていません。</p>`;
       return;
     }
-    if (rows.length === 0) {
-      listEl.innerHTML = `<p class="empty-msg">今週・今月とも、全員が目標ペースに乗っています。</p>`;
-      return;
-    }
-    listEl.innerHTML = rows.map((r) => approachCardHtml(r)).join('');
+
+    const weeks = monthWeekRanges(todayMonthKey()).reverse(); // 今週を先頭に表示
+    const shortMemberIds = new Set();
+    const blocks = weeks
+      .map((range) => approachWeekBlockHtml(range))
+      .filter((block) => {
+        block.memberIds.forEach((id) => shortMemberIds.add(id));
+        return block.html !== '';
+      })
+      .map((block) => block.html);
+
+    if (badgeEl) badgeEl.textContent = shortMemberIds.size ? `（${shortMemberIds.size}名）` : '';
+    containerEl.innerHTML = blocks.length
+      ? blocks.join('')
+      : `<p class="empty-msg">今月に入ってからの各週で、週目標を下回っている会員はいません。</p>`;
   }
 
   // ---------- 今日の予定 ----------
