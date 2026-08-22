@@ -117,3 +117,7 @@ create policy "allow all - training_sessions" on training_sessions for all using
 
 drop policy if exists "allow all - training_records" on training_records;
 create policy "allow all - training_records" on training_records for all using (true) with check (true);
+
+-- テーブル定義を変更した直後は、API側が新しい列をすぐに認識できないことがあるため
+-- キャッシュの再読み込みを明示的に指示する
+notify pgrst, 'reload schema';
