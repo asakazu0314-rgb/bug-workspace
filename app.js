@@ -95,6 +95,124 @@
     return course ? COURSE_LABELS[course] || `${course}回コース` : '未設定';
   }
 
+  // ---------- Gyms CSVインポート ----------
+  const GYMS_TRAINER_NAME = '安里一喜';
+
+  function parseCsvText(text) {
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1); // BOM除去
+    const rows = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') {
+            field += '"';
+            i++;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          field += c;
+        }
+      } else if (c === '"') {
+        inQuotes = true;
+      } else if (c === ',') {
+        row.push(field);
+        field = '';
+      } else if (c === '\r') {
+        // skip
+      } else if (c === '\n') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+      } else {
+        field += c;
+      }
+    }
+    if (field.length > 0 || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  function csvRowsToObjects(rows) {
+    if (rows.length === 0) return [];
+    const header = rows[0];
+    return rows
+      .slice(1)
+      .filter((r) => r.some((v) => v !== ''))
+      .map((r) => {
+        const obj = {};
+        header.forEach((h, i) => {
+          obj[h] = r[i] !== undefined ? r[i] : '';
+        });
+        return obj;
+      });
+  }
+
+  // メニュー名から回数（8/24/48など）を抜き出す（例：「◆マンツーマン60分/48回コース」→48）
+  function extractCourseFromMenu(menuName) {
+    const m = (menuName || '').match(/(\d+)回/);
+    return m ? Number(m[1]) : null;
+  }
+
+  const GYMS_STATUS_TO_TYPE = { 受講済み: 'done', 予約中: 'booked' };
+
+  // Gymsの予約CSVを解析し、安里一喜さんのセッション（キャンセルを除く）を会員ごとにまとめる
+  function parseGymsCsv(text) {
+    const objects = csvRowsToObjects(parseCsvText(text));
+    const byCustomer = new Map();
+    for (const r of objects) {
+      if (r['スタッフ 名前'] !== GYMS_TRAINER_NAME) continue;
+      const type = GYMS_STATUS_TO_TYPE[r['状態']];
+      const name = (r['顧客 名前'] || '').trim();
+      const date = (r['セッション日付'] || '').trim();
+      if (!type || !name || !date) continue;
+      const startRaw = r['セッション開始'] || '';
+      const time = startRaw.length >= 19 ? startRaw.slice(11, 19) : null;
+      if (!byCustomer.has(name)) byCustomer.set(name, { logs: [], courses: [] });
+      const entry = byCustomer.get(name);
+      entry.logs.push({ date, time, type });
+      const course = extractCourseFromMenu(r['メニュー 名前']);
+      if (course) entry.courses.push({ course, start: startRaw });
+    }
+    return Array.from(byCustomer.entries()).map(([name, data]) => {
+      let course = null;
+      if (data.courses.length > 0) {
+        data.courses.sort((a, b) => (a.start < b.start ? 1 : -1));
+        course = data.courses[0].course;
+      }
+      return { name, course, logs: data.logs };
+    });
+  }
+
+  async function runGymsCsvImport(customers) {
+    for (const m of [...state.data.members]) {
+      await deleteMemberRow(m.id);
+    }
+    for (const c of customers) {
+      await createMember({
+        name: c.name,
+        course: c.course,
+        weeklyFreq: 0,
+        monthlyGoal: 0,
+        remainingContract: 0,
+        memo: '',
+      });
+      const created = state.data.members.find((m) => m.name === c.name);
+      if (!created) continue;
+      for (const log of c.logs) {
+        await insertLog(created.id, log.date, log.type, log.time);
+      }
+    }
+    render();
+  }
+
   // ---------- local settings (店舗全体の月間/週間目標のみ。会員データはSupabaseへ) ----------
   function defaultLocalSettings() {
     return { monthlyGoalByMonth: {}, weeklyGoalByWeek: {} };
@@ -221,9 +339,12 @@
 
   // ---------- aggregation ----------
   function logCount(memberId, type, predicate) {
-    return state.data.log.filter(
+    const entries = state.data.log.filter(
       (e) => (memberId == null || e.memberId === memberId) && e.type === type && predicate(e.date)
-    ).length;
+    );
+    if (memberId != null) return entries.length;
+    // 店舗全体の集計では、同じ日時（ペア・複数人セッション）は1回として数える
+    return new Set(entries.map((e) => `${e.date}_${e.time || ''}`)).size;
   }
 
   function doneInMonth(memberId, monthKey) {
@@ -1401,6 +1522,32 @@
             render();
           })
       );
+    });
+
+    $('#csv-import-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        let customers;
+        try {
+          customers = parseGymsCsv(reader.result);
+        } catch (err) {
+          alert('CSVの読み込みに失敗しました。Gymsから書き出したCSVファイルを選択してください。');
+          return;
+        }
+        const totalLogs = customers.reduce((sum, c) => sum + c.logs.length, 0);
+        if (customers.length === 0) {
+          alert('CSVの中に「安里一喜」さんのセッションが見つかりませんでした。');
+          return;
+        }
+        openConfirm(
+          `既存の会員・実施記録・予約記録をすべて削除し、CSVから会員${customers.length}名・記録${totalLogs}件を新規作成します。元に戻せません。よろしいですか？`,
+          () => withBusyGuard(() => runGymsCsvImport(customers))
+        );
+      };
+      reader.readAsText(file);
+      e.target.value = '';
     });
   }
 

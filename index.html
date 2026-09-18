@@ -163,6 +163,17 @@
         <button id="reset-btn" class="btn-danger">全会員データを削除</button>
       </div>
     </section>
+
+    <section class="data-tools">
+      <h2>Gyms CSVから会員データを一新</h2>
+      <p class="data-tools-desc">Gymsから書き出したCSVファイルを読み込み、既存の会員・実施記録・予約記録をすべて削除したうえで、CSVの内容から作り直します。安里一喜さんのセッションのみが対象です（キャンセルは無視されます）。この操作は元に戻せません。</p>
+      <div class="data-tools-buttons">
+        <label class="btn-danger file-label">
+          CSVから会員データを一新
+          <input id="csv-import-input" type="file" accept=".csv" class="visually-hidden">
+        </label>
+      </div>
+    </section>
   </div>
 
   <!-- 月間カレンダー -->
