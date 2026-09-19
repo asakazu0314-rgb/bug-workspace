@@ -1589,7 +1589,7 @@
           return;
         }
         openConfirm(
-          `既存の会員・実施記録・予約記録をすべて削除し、CSVから会員${customers.length}名・記録${totalLogs}件を新規作成します。元に戻せません。よろしいですか？`,
+          `既存の会員・実施記録・予約記録をすべて削除し、CSVから会員${customers.length}名・記録${totalLogs}件を新規作成します。元に戻せません。\n\n※この操作は1回だけ実行してください。同じ用途でもう一度実行すると、今回作成したデータも消えて上書きされます。\n\nよろしいですか？`,
           () => withBusyGuard(() => runGymsCsvImport(customers))
         );
       };
