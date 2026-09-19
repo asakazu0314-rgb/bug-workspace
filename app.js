@@ -260,6 +260,129 @@
     render();
   }
 
+  // Gyms CSVを使った日次更新用の解析。
+  // 既存会員は名前で照合してそのまま残し（週目標・月目標・契約残り・メモは変更しない）、
+  // 実施・予約の追加/変更、キャンセルされた予約の削除だけを行う。
+  // ペア判定は、まだ会員登録されていない新規の2人にのみ適用する（既存の個別会員を誤ってペア化しないため）。
+  function parseGymsCsvForSync(text) {
+    const objects = csvRowsToObjects(parseCsvText(text));
+    const rows = objects.filter((r) => {
+      const status = r['状態'];
+      return (
+        r['スタッフ 名前'] === GYMS_TRAINER_NAME &&
+        (status === '受講済み' || status === '予約中' || status === 'キャンセル') &&
+        (r['顧客 名前'] || '').trim() &&
+        (r['セッション日付'] || '').trim()
+      );
+    });
+
+    const slots = new Map();
+    for (const r of rows) {
+      const date = r['セッション日付'].trim();
+      const startRaw = r['セッション開始'] || '';
+      const time = startRaw.length >= 19 ? startRaw.slice(11, 19) : null;
+      const slotKey = `${date}_${time || ''}`;
+      if (!slots.has(slotKey)) slots.set(slotKey, { date, time, entries: [] });
+      slots.get(slotKey).entries.push({
+        name: r['顧客 名前'].trim(),
+        status: r['状態'],
+        course: extractCourseFromMenu(r['メニュー 名前']),
+      });
+    }
+
+    const existingNames = new Set(state.data.members.map((m) => m.name));
+
+    // 新規顧客同士の2人組が繰り返し登場するかを調べる
+    const pairSlotCounts = new Map();
+    slots.forEach((slot) => {
+      const active = slot.entries.filter((e) => e.status !== 'キャンセル');
+      if (active.length !== 2) return;
+      const names = active.map((e) => e.name).sort();
+      if (existingNames.has(names[0]) || existingNames.has(names[1])) return;
+      const key = names.join('__');
+      pairSlotCounts.set(key, (pairSlotCounts.get(key) || 0) + 1);
+    });
+    const qualifyingPairKeys = new Set();
+    pairSlotCounts.forEach((n, key) => {
+      if (n >= 2) qualifyingPairKeys.add(key);
+    });
+
+    const byMember = new Map();
+    function getMemberEntry(name) {
+      if (!byMember.has(name)) byMember.set(name, { course: null, actions: [] });
+      return byMember.get(name);
+    }
+
+    slots.forEach((slot) => {
+      const active = slot.entries.filter((e) => e.status !== 'キャンセル');
+      const cancelled = slot.entries.filter((e) => e.status === 'キャンセル');
+
+      if (active.length === 2) {
+        const names = active.map((e) => e.name).sort();
+        const pairKey = names.join('__');
+        if (qualifyingPairKeys.has(pairKey)) {
+          const entry = getMemberEntry(names.join('＆'));
+          const type = active.some((e) => e.status === '受講済み') ? 'done' : 'booked';
+          entry.actions.push({ date: slot.date, time: slot.time, action: 'upsert', type });
+          const courseEntry = active.find((e) => e.course);
+          if (courseEntry && !entry.course) entry.course = courseEntry.course;
+          return;
+        }
+      }
+      active.forEach((e) => {
+        const entry = getMemberEntry(e.name);
+        const type = e.status === '受講済み' ? 'done' : 'booked';
+        entry.actions.push({ date: slot.date, time: slot.time, action: 'upsert', type });
+        if (e.course && !entry.course) entry.course = e.course;
+      });
+      cancelled.forEach((e) => {
+        const entry = getMemberEntry(e.name);
+        entry.actions.push({ date: slot.date, time: slot.time, action: 'delete' });
+      });
+    });
+
+    return Array.from(byMember.entries()).map(([name, data]) => ({
+      name,
+      course: data.course,
+      actions: data.actions,
+      isNew: !existingNames.has(name),
+    }));
+  }
+
+  async function runGymsCsvSync(customers) {
+    for (const c of customers) {
+      let member = state.data.members.find((m) => m.name === c.name);
+      if (!member) {
+        await createMember({
+          name: c.name,
+          course: c.course,
+          weeklyFreq: 0,
+          monthlyGoal: 0,
+          remainingContract: 0,
+          memo: '',
+        });
+        member = state.data.members.find((m) => m.name === c.name);
+        if (!member) continue;
+      }
+      for (const action of c.actions) {
+        const existingLog = state.data.log.find(
+          (l) => l.memberId === member.id && l.date === action.date && l.time === action.time
+        );
+        if (action.action === 'delete') {
+          if (existingLog) await deleteLogRow(existingLog.id, member.id);
+        } else if (!existingLog) {
+          await insertLog(member.id, action.date, action.type, action.time);
+        } else if (existingLog.type !== action.type) {
+          const { error } = await supabase.from('session_logs').update({ type: action.type }).eq('id', existingLog.id);
+          if (error) throw error;
+          existingLog.type = action.type;
+          await syncMemberCounts(member.id);
+        }
+      }
+    }
+    render();
+  }
+
   // ---------- local settings (店舗全体の月間/週間目標のみ。会員データはSupabaseへ) ----------
   function defaultLocalSettings() {
     return { monthlyGoalByMonth: {}, weeklyGoalByWeek: {} };
@@ -1591,6 +1714,33 @@
         openConfirm(
           `既存の会員・実施記録・予約記録をすべて削除し、CSVから会員${customers.length}名・記録${totalLogs}件を新規作成します。元に戻せません。\n\n※この操作は1回だけ実行してください。同じ用途でもう一度実行すると、今回作成したデータも消えて上書きされます。\n\nよろしいですか？`,
           () => withBusyGuard(() => runGymsCsvImport(customers))
+        );
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    });
+
+    $('#csv-sync-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        let customers;
+        try {
+          customers = parseGymsCsvForSync(reader.result);
+        } catch (err) {
+          alert('CSVの読み込みに失敗しました。Gymsから書き出したCSVファイルを選択してください。');
+          return;
+        }
+        if (customers.length === 0) {
+          alert('CSVの中に「安里一喜」さんのセッションが見つかりませんでした。');
+          return;
+        }
+        const newMemberCount = customers.filter((c) => c.isNew).length;
+        const actionCount = customers.reduce((sum, c) => sum + c.actions.length, 0);
+        openConfirm(
+          `CSVの内容で更新します。新規会員：${newMemberCount}名、実施・予約の追加/変更/削除：最大${actionCount}件。既存会員の週目標・月目標・契約残り・メモは変更されません。よろしいですか？`,
+          () => withBusyGuard(() => runGymsCsvSync(customers))
         );
       };
       reader.readAsText(file);

@@ -165,8 +165,19 @@
     </section>
 
     <section class="data-tools">
+      <h2>Gyms CSVで更新（毎日用）</h2>
+      <p class="data-tools-desc">Gymsから書き出したCSVファイルを読み込み、既存の会員はそのまま残して、新しい実施・予約の追加や、キャンセルされた予約の削除だけを行います。週目標・月目標・契約残り・メモなど手動で設定した項目は変更されません。新しい顧客が見つかった場合は自動で会員登録されます。毎日のアップロードにはこちらをお使いください。</p>
+      <div class="data-tools-buttons">
+        <label class="btn-primary file-label">
+          CSVで更新
+          <input id="csv-sync-input" type="file" accept=".csv" class="visually-hidden">
+        </label>
+      </div>
+    </section>
+
+    <section class="data-tools">
       <h2>Gyms CSVから会員データを一新</h2>
-      <p class="data-tools-desc">Gymsから書き出したCSVファイルを読み込み、既存の会員・実施記録・予約記録をすべて削除したうえで、CSVの内容から作り直します。安里一喜さんのセッションのみが対象です（キャンセルは無視されます）。同じ2人が同じ日時に2回以上一緒にセッションしている場合は「Aさん＆Bさん」という1組のペア会員としてまとめます。この操作は元に戻せません。</p>
+      <p class="data-tools-desc">Gymsから書き出したCSVファイルを読み込み、既存の会員・実施記録・予約記録をすべて削除したうえで、CSVの内容から作り直します。安里一喜さんのセッションのみが対象です（キャンセルは無視されます）。同じ2人が同じ日時に2回以上一緒にセッションしている場合は「Aさん＆Bさん」という1組のペア会員としてまとめます。この操作は元に戻せません。<strong>毎日の更新には使わず、最初の1回だけお使いください。</strong></p>
       <div class="data-tools-buttons">
         <label class="btn-danger file-label">
           CSVから会員データを一新
