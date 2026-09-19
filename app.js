@@ -1030,6 +1030,67 @@
       : `<p class="empty-msg">今月、実施済み回数が月目標に届いていない会員はいません。</p>`;
   }
 
+  // ---------- 空き時間案内（LINE用テキスト生成） ----------
+  const BUSINESS_START_HOUR = 7;
+  const BUSINESS_END_HOUR = 23; // この時刻ちょうどまでが営業時間（23:00終了）
+
+  // 指定日に、実施・予約が入っている時間（開始時刻の属する1時間）の集合を返す
+  function occupiedHoursForDate(dateStr) {
+    const occupied = new Set();
+    state.data.log.forEach((e) => {
+      if (e.date !== dateStr || !e.time) return;
+      const hour = parseInt(e.time.slice(0, 2), 10);
+      if (!isNaN(hour)) occupied.add(hour);
+    });
+    return occupied;
+  }
+
+  // 指定日の空き時間帯を、連続する1時間枠をまとめた範囲のリストで返す
+  function freeRangesForDate(dateStr) {
+    const occupied = occupiedHoursForDate(dateStr);
+    const today = todayISO();
+    const nowHour = new Date().getHours();
+    const ranges = [];
+    let rangeStart = null;
+    for (let h = BUSINESS_START_HOUR; h < BUSINESS_END_HOUR; h++) {
+      const isPast = dateStr === today && h < nowHour;
+      const isFree = !occupied.has(h) && !isPast;
+      if (isFree && rangeStart === null) {
+        rangeStart = h;
+      } else if (!isFree && rangeStart !== null) {
+        ranges.push({ start: rangeStart, end: h });
+        rangeStart = null;
+      }
+    }
+    if (rangeStart !== null) ranges.push({ start: rangeStart, end: BUSINESS_END_HOUR });
+    return ranges;
+  }
+
+  function formatHourLabel(h) {
+    return `${pad2(h)}:00`;
+  }
+
+  // 開始日〜終了日（両端含む）の空き時間案内テキストをLINE貼り付け用に作成する
+  function generateAvailabilityText(startDateStr, endDateStr) {
+    const lines = [];
+    let d = parseISO(startDateStr);
+    const end = parseISO(endDateStr);
+    while (d <= end) {
+      const dateStr = isoDate(d);
+      lines.push(`${d.getMonth() + 1}/${d.getDate()}`);
+      const ranges = freeRangesForDate(dateStr);
+      if (ranges.length === 0) {
+        lines.push('空きなし');
+      } else {
+        ranges.forEach((r) => lines.push(`${formatHourLabel(r.start)}-${formatHourLabel(r.end)}`));
+      }
+      lines.push('');
+      d = addDays(d, 1);
+    }
+    while (lines.length && lines[lines.length - 1] === '') lines.pop();
+    return lines.join('\n');
+  }
+
   // ---------- 今日の予定 ----------
   function renderTodayView() {
     const listEl = $('#today-schedule-list');
@@ -1652,6 +1713,45 @@
       reader.readAsText(file);
       e.target.value = '';
     });
+
+    // 空き時間案内: 日付初期値（今日〜1週間後）
+    $('#avail-start-date').value = todayISO();
+    $('#avail-end-date').value = isoDate(addDays(new Date(), 6));
+
+    $('#avail-generate-btn').addEventListener('click', () => {
+      const start = $('#avail-start-date').value;
+      const end = $('#avail-end-date').value;
+      if (!start || !end || start > end) {
+        alert('開始日と終了日を正しく指定してください（開始日は終了日より前にしてください）。');
+        return;
+      }
+      $('#avail-output').value = generateAvailabilityText(start, end);
+    });
+
+    $('#avail-copy-btn').addEventListener('click', () => {
+      const text = $('#avail-output').value;
+      if (!text) {
+        alert('先に「文章を作成」を押してください。');
+        return;
+      }
+      const finish = () => alert('コピーしました。LINEに貼り付けてください。');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(finish, () => {
+          fallbackCopyText(text);
+          finish();
+        });
+      } else {
+        fallbackCopyText(text);
+        finish();
+      }
+    });
+  }
+
+  function fallbackCopyText(text) {
+    const ta = $('#avail-output');
+    ta.focus();
+    ta.select();
+    document.execCommand('copy');
   }
 
   // ---------- init ----------
