@@ -163,103 +163,6 @@
 
   const GYMS_STATUS_TO_TYPE = { 受講済み: 'done', 予約中: 'booked' };
 
-  // Gymsの予約CSVを解析し、安里一喜さんのセッション（キャンセルを除く）を会員ごとにまとめる。
-  // 同じ2人組み合わせが同じ日時に繰り返し（2回以上）登場する場合は、
-  // その2人を1組のペア会員としてまとめる（記録も1件にまとめる）。
-  function parseGymsCsv(text) {
-    const objects = csvRowsToObjects(parseCsvText(text));
-    const rows = objects.filter((r) => {
-      const type = GYMS_STATUS_TO_TYPE[r['状態']];
-      return r['スタッフ 名前'] === GYMS_TRAINER_NAME && type && (r['顧客 名前'] || '').trim() && (r['セッション日付'] || '').trim();
-    });
-
-    // 日時ごとにグループ化
-    const slots = new Map();
-    for (const r of rows) {
-      const date = r['セッション日付'].trim();
-      const startRaw = r['セッション開始'] || '';
-      const time = startRaw.length >= 19 ? startRaw.slice(11, 19) : null;
-      const slotKey = `${date}_${time || ''}`;
-      if (!slots.has(slotKey)) slots.set(slotKey, { date, time, entries: [] });
-      slots.get(slotKey).entries.push({
-        name: r['顧客 名前'].trim(),
-        type: GYMS_STATUS_TO_TYPE[r['状態']],
-        course: extractCourseFromMenu(r['メニュー 名前']),
-        start: startRaw,
-      });
-    }
-
-    // 2人組の日時スロットのうち、同じ組み合わせが2回以上登場するものを「ペア」とみなす
-    const pairSlotCounts = new Map();
-    slots.forEach((slot) => {
-      if (slot.entries.length !== 2) return;
-      const pairKey = slot.entries.map((e) => e.name).sort().join('__');
-      pairSlotCounts.set(pairKey, (pairSlotCounts.get(pairKey) || 0) + 1);
-    });
-    const qualifyingPairKeys = new Set();
-    pairSlotCounts.forEach((n, key) => {
-      if (n >= 2) qualifyingPairKeys.add(key);
-    });
-
-    const byCustomer = new Map();
-    function getEntry(name) {
-      if (!byCustomer.has(name)) byCustomer.set(name, { logs: [], courses: [] });
-      return byCustomer.get(name);
-    }
-
-    slots.forEach((slot) => {
-      if (slot.entries.length === 2) {
-        const names = slot.entries.map((e) => e.name).sort();
-        const pairKey = names.join('__');
-        if (qualifyingPairKeys.has(pairKey)) {
-          const entry = getEntry(names.join('＆'));
-          const type = slot.entries.some((e) => e.type === 'done') ? 'done' : 'booked';
-          entry.logs.push({ date: slot.date, time: slot.time, type });
-          const courseEntry = slot.entries.find((e) => e.course);
-          if (courseEntry) entry.courses.push({ course: courseEntry.course, start: courseEntry.start });
-          return;
-        }
-      }
-      // ペア対象外（ソロ・一回限りの組み合わせ・3人以上）は、これまで通り個別に記録する
-      slot.entries.forEach((e) => {
-        const entry = getEntry(e.name);
-        entry.logs.push({ date: slot.date, time: slot.time, type: e.type });
-        if (e.course) entry.courses.push({ course: e.course, start: e.start });
-      });
-    });
-
-    return Array.from(byCustomer.entries()).map(([name, data]) => {
-      let course = null;
-      if (data.courses.length > 0) {
-        data.courses.sort((a, b) => (a.start < b.start ? 1 : -1));
-        course = data.courses[0].course;
-      }
-      return { name, course, logs: data.logs };
-    });
-  }
-
-  async function runGymsCsvImport(customers) {
-    for (const m of [...state.data.members]) {
-      await deleteMemberRow(m.id);
-    }
-    for (const c of customers) {
-      await createMember({
-        name: c.name,
-        course: c.course,
-        weeklyFreq: 0,
-        monthlyGoal: 0,
-        remainingContract: 0,
-        memo: '',
-      });
-      const created = state.data.members.find((m) => m.name === c.name);
-      if (!created) continue;
-      for (const log of c.logs) {
-        await insertLog(created.id, log.date, log.type, log.time);
-      }
-    }
-    render();
-  }
-
   // Gyms CSVを使った日次更新用の解析。
   // 既存会員は名前で照合してそのまま残し（週目標・月目標・契約残り・メモは変更しない）、
   // 実施・予約の追加/変更、キャンセルされた予約の削除だけを行う。
@@ -389,9 +292,14 @@
         if (!member) continue;
       }
       for (const action of c.actions) {
-        const existingLog = state.data.log.find(
+        // 同じ会員・同じ日時の記録が2件以上残っている場合は、1件だけ残して重複を解消する
+        const matchingLogs = state.data.log.filter(
           (l) => l.memberId === member.id && l.date === action.date && l.time === action.time
         );
+        for (const extra of matchingLogs.slice(1)) {
+          await deleteLogRow(extra.id, member.id);
+        }
+        const existingLog = matchingLogs[0];
         if (action.action === 'delete') {
           if (existingLog) await deleteLogRow(existingLog.id, member.id);
         } else if (!existingLog) {
@@ -1716,32 +1624,6 @@
             render();
           })
       );
-    });
-
-    $('#csv-import-input').addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        let customers;
-        try {
-          customers = parseGymsCsv(reader.result);
-        } catch (err) {
-          alert('CSVの読み込みに失敗しました。Gymsから書き出したCSVファイルを選択してください。');
-          return;
-        }
-        const totalLogs = customers.reduce((sum, c) => sum + c.logs.length, 0);
-        if (customers.length === 0) {
-          alert('CSVの中に「安里一喜」さんのセッションが見つかりませんでした。');
-          return;
-        }
-        openConfirm(
-          `既存の会員・実施記録・予約記録をすべて削除し、CSVから会員${customers.length}名・記録${totalLogs}件を新規作成します。元に戻せません。\n\n※この操作は1回だけ実行してください。同じ用途でもう一度実行すると、今回作成したデータも消えて上書きされます。\n\nよろしいですか？`,
-          () => withBusyGuard(() => runGymsCsvImport(customers))
-        );
-      };
-      reader.readAsText(file);
-      e.target.value = '';
     });
 
     $('#csv-sync-input').addEventListener('change', (e) => {
