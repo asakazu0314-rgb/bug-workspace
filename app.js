@@ -163,24 +163,71 @@
 
   const GYMS_STATUS_TO_TYPE = { 受講済み: 'done', 予約中: 'booked' };
 
-  // Gymsの予約CSVを解析し、安里一喜さんのセッション（キャンセルを除く）を会員ごとにまとめる
+  // Gymsの予約CSVを解析し、安里一喜さんのセッション（キャンセルを除く）を会員ごとにまとめる。
+  // 同じ2人組み合わせが同じ日時に繰り返し（2回以上）登場する場合は、
+  // その2人を1組のペア会員としてまとめる（記録も1件にまとめる）。
   function parseGymsCsv(text) {
     const objects = csvRowsToObjects(parseCsvText(text));
-    const byCustomer = new Map();
-    for (const r of objects) {
-      if (r['スタッフ 名前'] !== GYMS_TRAINER_NAME) continue;
+    const rows = objects.filter((r) => {
       const type = GYMS_STATUS_TO_TYPE[r['状態']];
-      const name = (r['顧客 名前'] || '').trim();
-      const date = (r['セッション日付'] || '').trim();
-      if (!type || !name || !date) continue;
+      return r['スタッフ 名前'] === GYMS_TRAINER_NAME && type && (r['顧客 名前'] || '').trim() && (r['セッション日付'] || '').trim();
+    });
+
+    // 日時ごとにグループ化
+    const slots = new Map();
+    for (const r of rows) {
+      const date = r['セッション日付'].trim();
       const startRaw = r['セッション開始'] || '';
       const time = startRaw.length >= 19 ? startRaw.slice(11, 19) : null;
-      if (!byCustomer.has(name)) byCustomer.set(name, { logs: [], courses: [] });
-      const entry = byCustomer.get(name);
-      entry.logs.push({ date, time, type });
-      const course = extractCourseFromMenu(r['メニュー 名前']);
-      if (course) entry.courses.push({ course, start: startRaw });
+      const slotKey = `${date}_${time || ''}`;
+      if (!slots.has(slotKey)) slots.set(slotKey, { date, time, entries: [] });
+      slots.get(slotKey).entries.push({
+        name: r['顧客 名前'].trim(),
+        type: GYMS_STATUS_TO_TYPE[r['状態']],
+        course: extractCourseFromMenu(r['メニュー 名前']),
+        start: startRaw,
+      });
     }
+
+    // 2人組の日時スロットのうち、同じ組み合わせが2回以上登場するものを「ペア」とみなす
+    const pairSlotCounts = new Map();
+    slots.forEach((slot) => {
+      if (slot.entries.length !== 2) return;
+      const pairKey = slot.entries.map((e) => e.name).sort().join('__');
+      pairSlotCounts.set(pairKey, (pairSlotCounts.get(pairKey) || 0) + 1);
+    });
+    const qualifyingPairKeys = new Set();
+    pairSlotCounts.forEach((n, key) => {
+      if (n >= 2) qualifyingPairKeys.add(key);
+    });
+
+    const byCustomer = new Map();
+    function getEntry(name) {
+      if (!byCustomer.has(name)) byCustomer.set(name, { logs: [], courses: [] });
+      return byCustomer.get(name);
+    }
+
+    slots.forEach((slot) => {
+      if (slot.entries.length === 2) {
+        const names = slot.entries.map((e) => e.name).sort();
+        const pairKey = names.join('__');
+        if (qualifyingPairKeys.has(pairKey)) {
+          const entry = getEntry(names.join('＆'));
+          const type = slot.entries.some((e) => e.type === 'done') ? 'done' : 'booked';
+          entry.logs.push({ date: slot.date, time: slot.time, type });
+          const courseEntry = slot.entries.find((e) => e.course);
+          if (courseEntry) entry.courses.push({ course: courseEntry.course, start: courseEntry.start });
+          return;
+        }
+      }
+      // ペア対象外（ソロ・一回限りの組み合わせ・3人以上）は、これまで通り個別に記録する
+      slot.entries.forEach((e) => {
+        const entry = getEntry(e.name);
+        entry.logs.push({ date: slot.date, time: slot.time, type: e.type });
+        if (e.course) entry.courses.push({ course: e.course, start: e.start });
+      });
+    });
+
     return Array.from(byCustomer.entries()).map(([name, data]) => {
       let course = null;
       if (data.courses.length > 0) {
