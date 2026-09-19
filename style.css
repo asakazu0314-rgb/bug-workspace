@@ -797,6 +797,7 @@ button.cal-cell:active { background: var(--border); }
   overflow-y: auto;
 }
 .modal-box h3 { margin-top: 0; }
+#confirm-message { white-space: pre-line; }
 
 .day-detail-list {
   max-height: min(360px, 55vh);
