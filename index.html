@@ -225,6 +225,29 @@
     <div id="approach-list" class="members-list"></div>
   </div>
 
+  <!-- 空き時間案内（LINE用テキスト生成） -->
+  <div id="view-availability" class="app-view hidden">
+    <section class="members-toolbar">
+      <div class="members-toolbar-head">
+        <h2>空き時間案内</h2>
+      </div>
+      <p class="data-tools-desc">指定した期間の中で、営業時間（7:00〜23:00）のうち予約・実施が入っていない時間帯を1時間単位で自動計算し、LINEにそのまま貼り付けられる文章を作成します。</p>
+      <div class="availability-date-range">
+        <label class="filter-field">開始日
+          <input id="avail-start-date" type="date">
+        </label>
+        <label class="filter-field">終了日
+          <input id="avail-end-date" type="date">
+        </label>
+        <button type="button" id="avail-generate-btn" class="btn-primary">文章を作成</button>
+      </div>
+      <textarea id="avail-output" class="availability-output" rows="10" readonly placeholder="「文章を作成」を押すと、ここに結果が表示されます"></textarea>
+      <div class="data-tools-buttons">
+        <button type="button" id="avail-copy-btn" class="btn-secondary">コピー</button>
+      </div>
+    </section>
+  </div>
+
   <footer class="app-footer">
     <p>BUG泡瀬店 専用ツール ・ 会員データはSupabaseに保存されます</p>
   </footer>
@@ -237,6 +260,7 @@
   <button type="button" class="app-tab" data-view="calendar">月間カレンダー</button>
   <button type="button" class="app-tab" data-view="no-booking">予約なし</button>
   <button type="button" class="app-tab" data-view="approach">予約アプローチ</button>
+  <button type="button" class="app-tab" data-view="availability">空き時間案内</button>
 </nav>
 
 <div id="loading-overlay" class="loading-overlay hidden">

@@ -437,7 +437,8 @@ body {
   flex: 1;
   min-width: 130px;
 }
-.filter-field select {
+.filter-field select,
+.filter-field input {
   font-size: 0.88rem;
   padding: 9px 8px;
   border: 1px solid var(--border);
@@ -445,6 +446,29 @@ body {
   background: var(--card-bg);
   color: var(--text);
   font-family: inherit;
+}
+
+.availability-date-range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin-top: 10px;
+}
+.availability-date-range .btn-primary { flex-shrink: 0; }
+.availability-output {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  resize: vertical;
+  box-sizing: border-box;
 }
 
 .members-list {
