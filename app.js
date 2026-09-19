@@ -292,13 +292,21 @@
 
     const existingNames = new Set(state.data.members.map((m) => m.name));
 
-    // 新規顧客同士の2人組が繰り返し登場するかを調べる
+    // 個人名 -> 既存会員名（ペア会員の場合は「Aさん＆Bさん」の結合名）の対応表
+    // これにより、既にペア会員として登録済みの2人を、再度「新規の組み合わせ」と
+    // 誤判定して個別会員を重複作成してしまうことを防ぐ
+    const individualToExistingMember = new Map();
+    state.data.members.forEach((m) => {
+      m.name.split('＆').forEach((part) => individualToExistingMember.set(part, m.name));
+    });
+
+    // まだどの既存会員にも属していない新規顧客同士の2人組が、繰り返し登場するかを調べる
     const pairSlotCounts = new Map();
     slots.forEach((slot) => {
       const active = slot.entries.filter((e) => e.status !== 'キャンセル');
       if (active.length !== 2) return;
       const names = active.map((e) => e.name).sort();
-      if (existingNames.has(names[0]) || existingNames.has(names[1])) return;
+      if (individualToExistingMember.has(names[0]) || individualToExistingMember.has(names[1])) return;
       const key = names.join('__');
       pairSlotCounts.set(key, (pairSlotCounts.get(key) || 0) + 1);
     });
@@ -319,24 +327,40 @@
 
       if (active.length === 2) {
         const names = active.map((e) => e.name).sort();
-        const pairKey = names.join('__');
-        if (qualifyingPairKeys.has(pairKey)) {
-          const entry = getMemberEntry(names.join('＆'));
+        const mappedA = individualToExistingMember.get(names[0]);
+        const mappedB = individualToExistingMember.get(names[1]);
+        // 2人とも既に同じペア会員に属している -> そのペア会員の記録として扱う
+        if (mappedA && mappedA === mappedB) {
+          const entry = getMemberEntry(mappedA);
           const type = active.some((e) => e.status === '受講済み') ? 'done' : 'booked';
           entry.actions.push({ date: slot.date, time: slot.time, action: 'upsert', type });
           const courseEntry = active.find((e) => e.course);
           if (courseEntry && !entry.course) entry.course = courseEntry.course;
           return;
         }
+        // どちらの会員にも属していない新規の2人で、繰り返し登場するなら新しいペア会員にする
+        if (!mappedA && !mappedB) {
+          const pairKey = names.join('__');
+          if (qualifyingPairKeys.has(pairKey)) {
+            const entry = getMemberEntry(names.join('＆'));
+            const type = active.some((e) => e.status === '受講済み') ? 'done' : 'booked';
+            entry.actions.push({ date: slot.date, time: slot.time, action: 'upsert', type });
+            const courseEntry = active.find((e) => e.course);
+            if (courseEntry && !entry.course) entry.course = courseEntry.course;
+            return;
+          }
+        }
       }
+      // 上記いずれにも当てはまらない場合（ソロ・片方だけ既存会員・3人以上など）は個別に記録する。
+      // 既に何らかの会員（個人・ペア）に属している名前は、その会員名に振り分ける。
       active.forEach((e) => {
-        const entry = getMemberEntry(e.name);
+        const entry = getMemberEntry(individualToExistingMember.get(e.name) || e.name);
         const type = e.status === '受講済み' ? 'done' : 'booked';
         entry.actions.push({ date: slot.date, time: slot.time, action: 'upsert', type });
         if (e.course && !entry.course) entry.course = e.course;
       });
       cancelled.forEach((e) => {
-        const entry = getMemberEntry(e.name);
+        const entry = getMemberEntry(individualToExistingMember.get(e.name) || e.name);
         entry.actions.push({ date: slot.date, time: slot.time, action: 'delete' });
       });
     });
