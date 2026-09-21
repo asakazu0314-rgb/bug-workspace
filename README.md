@@ -58,10 +58,14 @@ window.SUPABASE_CONFIG = {
 5. 数分後、表示されるURL（`https://<ユーザー名>.github.io/bug-workspace/`）にiPad・iPhoneのSafariでアクセス
 6. Safariの共有ボタン →「ホーム画面に追加」で、アプリのように使えます
 
+## Googleカレンダー連携（毎日自動同期）について
+実施・予約記録を毎日自動でGoogleカレンダーへ反映する機能です。設定方法は [`calendar-sync/README.md`](./calendar-sync/README.md) を参照してください。
+
 ## ファイル構成
 - `index.html` … 画面構成
 - `style.css` … デザイン
 - `app.js` … 計算・保存・操作ロジック（会員データはSupabase、目標値はブラウザ内に保存）
 - `supabase-config.js` … Supabase接続設定（URL・anonキー）
 - `supabase/migration.sql` … Supabase側に実行するテーブル拡張・作成SQL
+- `calendar-sync/` … Googleカレンダー連携（毎日自動同期）用のGoogle Apps Scriptと設定手順
 - `manifest.json` / `icon.svg` … ホーム画面追加用アイコン設定
