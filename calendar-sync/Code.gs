@@ -95,11 +95,19 @@ function syncCalendar() {
     }
 
     if (event) {
-      event.setTitle(title);
-      if (!when.allDay) event.setTime(when.start, when.end);
+      // 内容が変わっていない予定にはカレンダーAPIを呼ばない（呼び出し回数を減らし、上限に達しにくくする）
+      if (event.getTitle() !== title) event.setTitle(title);
+      if (!when.allDay) {
+        var curStart = event.getStartTime();
+        var curEnd = event.getEndTime();
+        if (curStart.getTime() !== when.start.getTime() || curEnd.getTime() !== when.end.getTime()) {
+          event.setTime(when.start, when.end);
+        }
+      }
     } else {
       event = createEvent_(calendar, title, when);
       updateEventId_(row.id, event.getId());
+      Utilities.sleep(200); // 新規作成が連続すると上限に達しやすいため、少し間隔をあける
     }
     activeEventIds[event.getId()] = true;
   });
@@ -111,6 +119,7 @@ function syncCalendar() {
     if (desc.indexOf(EVENT_MARKER) === -1) return; // このスクリプト以外が作ったイベントには触れない
     if (!activeEventIds[ev.getId()]) {
       ev.deleteEvent();
+      Utilities.sleep(200);
     }
   });
 
