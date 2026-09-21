@@ -10,4 +10,8 @@
 window.SUPABASE_CONFIG = {
   url: 'https://rnkucsdsdwyjxevxwmcl.supabase.co',
   anonKey: 'sb_publishable_jnKFKZpuqrjB1Psp3pljEA_lquY5M-D',
+  // 任意設定：Googleカレンダー連携（calendar-sync）をウェブアプリとして公開した際のURL。
+  // 設定すると、CSVアップロード完了時にその場でカレンダーへ反映されます（未設定でも1日5回の自動同期は動きます）。
+  // 手順は calendar-sync/README.md を参照してください。
+  calendarSyncUrl: '',
 };

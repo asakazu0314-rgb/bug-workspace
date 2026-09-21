@@ -47,6 +47,19 @@ function testRunNow() {
   Logger.log('実行しました。Googleカレンダーを確認してください。');
 }
 
+// ==== アプリからのCSVアップロード時に、その場で同期するための入口 ====
+// このプロジェクトを「ウェブアプリ」としてデプロイすると呼び出せるURLができます。
+// アプリ側（supabase-config.js の calendarSyncUrl）からこのURLを呼ぶことで、
+// 1日5回の自動実行を待たずに即座に反映されます。
+function doGet(e) {
+  try {
+    syncCalendar();
+    return ContentService.createTextOutput('OK');
+  } catch (err) {
+    return ContentService.createTextOutput('ERROR: ' + err.message);
+  }
+}
+
 // ==== メインの同期処理 ====
 function syncCalendar() {
   var calendar = CalendarApp.getDefaultCalendar();
