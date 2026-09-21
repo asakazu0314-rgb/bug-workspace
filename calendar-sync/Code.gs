@@ -13,6 +13,7 @@ var SYNC_WINDOW_PAST_DAYS = 14; // 過去何日分までさかのぼって同期
 var SYNC_WINDOW_FUTURE_DAYS = 60; // 未来何日分まで同期するか
 var EVENT_MARKER = '[BUG会員管理アプリ]'; // このスクリプトが作成したイベントの目印（説明欄に入れる）
 var DEFAULT_SESSION_MINUTES = 60; // 時間未設定の予約はこの長さのイベントにする
+var SYNC_HOURS = [6, 12, 15, 21, 0]; // 自動実行する時刻（24時間表記、複数指定可）
 
 // ==== 設定の読み込み ====
 // SUPABASE_URL / SUPABASE_ANON_KEY は
@@ -27,15 +28,17 @@ function getConfig_() {
   return { url: url, key: key };
 }
 
-// ==== 毎日自動実行するトリガーを作成する（最初に1回だけ実行） ====
+// ==== 毎日自動実行するトリガーを作成する（最初に1回だけ実行。時刻を変えた時も再実行でOK） ====
 function setupTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'syncCalendar') {
       ScriptApp.deleteTrigger(t);
     }
   });
-  ScriptApp.newTrigger('syncCalendar').timeBased().everyDays(1).atHour(5).create();
-  Logger.log('毎日朝5時ごろに自動実行するトリガーを設定しました。');
+  SYNC_HOURS.forEach(function (hour) {
+    ScriptApp.newTrigger('syncCalendar').timeBased().everyDays(1).atHour(hour).create();
+  });
+  Logger.log('毎日 ' + SYNC_HOURS.join('時, ') + '時ごろに自動実行するトリガーを' + SYNC_HOURS.length + '件設定しました。');
 }
 
 // ==== 動作確認用: 今すぐ1回だけ実行する ====
