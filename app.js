@@ -313,6 +313,7 @@
       }
     }
     render();
+    triggerCalendarSync();
   }
 
   // ---------- local settings (店舗全体の月間/週間目標のみ。会員データはSupabaseへ) ----------
@@ -368,6 +369,13 @@
   function initSupabaseClient() {
     const cfg = window.SUPABASE_CONFIG;
     supabase = window.supabase.createClient(cfg.url, cfg.anonKey);
+  }
+
+  // CSV取り込み後などに、Googleカレンダーへの即時反映をお願いする（結果は待たない・失敗しても無視する）
+  function triggerCalendarSync() {
+    const url = window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.calendarSyncUrl;
+    if (!url) return;
+    fetch(url, { mode: 'no-cors' }).catch(() => {});
   }
 
   // ---------- row <-> app model mapping ----------
