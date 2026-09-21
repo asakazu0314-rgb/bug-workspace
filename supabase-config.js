@@ -13,5 +13,5 @@ window.SUPABASE_CONFIG = {
   // 任意設定：Googleカレンダー連携（calendar-sync）をウェブアプリとして公開した際のURL。
   // 設定すると、CSVアップロード完了時にその場でカレンダーへ反映されます（未設定でも1日5回の自動同期は動きます）。
   // 手順は calendar-sync/README.md を参照してください。
-  calendarSyncUrl: 'https://script.google.com/macros/s/AKfycbzVcauWkKuaK_l9GsbapVJX6TXJsicIf3hbgZ6FPG6Ol7Fl0pgKyBdmUAo2VXlGGItH/exec',
+  calendarSyncUrl: 'https://script.google.com/macros/s/AKfycbx1srt1zjOW-ZPnqK7cuHDk3cDJbko8PX1_qnkgKs8wuoWtoT7SikQPmKLCjjUy-hY6/exec',
 };
