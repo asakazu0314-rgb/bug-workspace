@@ -54,3 +54,8 @@ create policy "Allow anon full access to session_logs" on public.session_logs
   to anon
   using (true)
   with check (true);
+
+-- 4) Googleカレンダー連携: 同期済みのイベントIDを記録する列を追加します（任意項目）
+--    Google Apps Scriptが、この記録と対応するカレンダーの予定を突き合わせるために使います。
+alter table public.session_logs
+  add column if not exists calendar_event_id text;
