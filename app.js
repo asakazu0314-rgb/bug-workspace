@@ -1099,6 +1099,44 @@
     return lines.join('\n');
   }
 
+  // 会員1人分・今月の「予約中」日程をLINE貼り付け用の文章にする
+  function generateMemberBookingText(member) {
+    const monthKey = todayMonthKey();
+    const bookings = state.data.log
+      .filter((e) => e.memberId === member.id && e.type === 'booked' && e.date.slice(0, 7) === monthKey)
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+        const ta = a.time || '99:99';
+        const tb = b.time || '99:99';
+        return ta < tb ? -1 : ta > tb ? 1 : 0;
+      });
+    const lines = [`${member.name}様`, '', '今月のご予約日程をお知らせします。', ''];
+    if (bookings.length === 0) {
+      lines.push('現在、今月のご予約はありません。');
+    } else {
+      bookings.forEach((e) => {
+        const d = parseISO(e.date);
+        const dateLabel = `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS_JA[d.getDay()]})`;
+        const timeLabel = e.time ? e.time.slice(0, 5) : '時間未定';
+        lines.push(`${dateLabel} ${timeLabel}`);
+      });
+    }
+    lines.push('', 'よろしくお願いいたします。');
+    return lines.join('\n');
+  }
+
+  function copyTextToClipboard(text, onDone) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(onDone, () => {
+        fallbackCopyText(text);
+        onDone();
+      });
+    } else {
+      fallbackCopyText(text);
+      onDone();
+    }
+  }
+
   // ---------- 今日の予定 ----------
   function renderTodayView() {
     const listEl = $('#today-schedule-list');
@@ -1742,24 +1780,27 @@
         alert('先に「文章を作成」を押してください。');
         return;
       }
-      const finish = () => alert('コピーしました。LINEに貼り付けてください。');
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(finish, () => {
-          fallbackCopyText(text);
-          finish();
-        });
-      } else {
-        fallbackCopyText(text);
-        finish();
-      }
+      copyTextToClipboard(text, () => alert('コピーしました。LINEに貼り付けてください。'));
+    });
+
+    $('#detail-line-share-btn').addEventListener('click', () => {
+      const m = state.data.members.find((x) => x.id === state.detailMemberId);
+      if (!m) return;
+      const text = generateMemberBookingText(m);
+      copyTextToClipboard(text, () => alert('コピーしました。LINEに貼り付けてください。'));
     });
   }
 
   function fallbackCopyText(text) {
-    const ta = $('#avail-output');
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
     ta.focus();
     ta.select();
     document.execCommand('copy');
+    document.body.removeChild(ta);
   }
 
   // ---------- init ----------
