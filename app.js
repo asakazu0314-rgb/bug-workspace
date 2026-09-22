@@ -1110,7 +1110,7 @@
         const tb = b.time || '99:99';
         return ta < tb ? -1 : ta > tb ? 1 : 0;
       });
-    const lines = [`${member.name}様`, '', '今月のご予約日程をお知らせします。', ''];
+    const lines = [`${member.name}様`, '', 'お疲れ様です！', '今月のご予約日程のお知らせです！🗓️', ''];
     if (bookings.length === 0) {
       lines.push('現在、今月のご予約はありません。');
     } else {
@@ -1121,7 +1121,7 @@
         lines.push(`${dateLabel} ${timeLabel}`);
       });
     }
-    lines.push('', 'よろしくお願いいたします。');
+    lines.push('', 'よろしくお願いいたします！');
     return lines.join('\n');
   }
 
