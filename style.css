@@ -582,6 +582,14 @@ body {
   color: var(--text-muted);
   font-weight: 600;
 }
+.detail-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.detail-section-head h4 { margin: 0; }
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
