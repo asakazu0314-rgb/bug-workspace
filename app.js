@@ -256,6 +256,7 @@
       }
       // 上記いずれにも当てはまらない場合（ソロ・片方だけ既存会員・3人以上など）は個別に記録する。
       // 既に何らかの会員（個人・ペア）に属している名前は、その会員名に振り分ける。
+      const activeNames = new Set(active.map((e) => e.name));
       active.forEach((e) => {
         const entry = getMemberEntry(individualToExistingMember.get(e.name) || e.name);
         const type = e.status === '受講済み' ? 'done' : 'booked';
@@ -263,6 +264,9 @@
         if (e.course && !entry.course) entry.course = e.course;
       });
       cancelled.forEach((e) => {
+        // 同じ人の同じ日時に有効な記録（実施・予約）が別途あるなら、
+        // キャンセルの重複行は無視する（削除で正しい記録まで消してしまうのを防ぐ）
+        if (activeNames.has(e.name)) return;
         const entry = getMemberEntry(individualToExistingMember.get(e.name) || e.name);
         entry.actions.push({ date: slot.date, time: slot.time, action: 'delete' });
       });
