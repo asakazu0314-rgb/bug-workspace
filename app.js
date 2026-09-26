@@ -272,15 +272,38 @@
       });
     });
 
-    return Array.from(byMember.entries()).map(([name, data]) => ({
+    const customers = Array.from(byMember.entries()).map(([name, data]) => ({
       name,
       course: data.course,
       actions: data.actions,
       isNew: !existingNames.has(name),
     }));
+
+    // CSVに含まれるセッション日の範囲（「セッション日で絞り込んだCSV」かどうかの判断や、
+    // 整合性チェック機能でその期間を漏れなく反映するために使う）
+    let minDate = null;
+    let maxDate = null;
+    rows.forEach((r) => {
+      const d = r['セッション日付'].trim();
+      if (!minDate || d < minDate) minDate = d;
+      if (!maxDate || d > maxDate) maxDate = d;
+    });
+
+    // 日付ごとに「CSV上、有効な記録として残るべき会員名＋時間」の一覧
+    // （整合性チェック機能で、これに載っていない記録を削除するために使う）
+    const keptSlotsByDate = new Map();
+    customers.forEach((c) => {
+      c.actions.forEach((a) => {
+        if (a.action !== 'upsert') return;
+        if (!keptSlotsByDate.has(a.date)) keptSlotsByDate.set(a.date, new Set());
+        keptSlotsByDate.get(a.date).add(`${c.name}|${a.time || ''}`);
+      });
+    });
+
+    return { customers, minDate, maxDate, keptSlotsByDate };
   }
 
-  async function runGymsCsvSync(customers) {
+  async function applyGymsCsvActions(customers) {
     for (const c of customers) {
       let member = state.data.members.find((m) => m.name === c.name);
       if (!member) {
@@ -314,6 +337,28 @@
           existingLog.type = action.type;
           await syncMemberCounts(member.id);
         }
+      }
+    }
+  }
+
+  async function runGymsCsvSync(customers) {
+    await applyGymsCsvActions(customers);
+    render();
+    triggerCalendarSync();
+  }
+
+  // セッション日で絞り込んだ（＝その期間のセッションを漏れなく含む）CSVを使って、
+  // 期間内の実施・予約データをCSVの内容に完全に一致させる（載っていない記録は削除する）
+  async function runGymsCsvReconcile(customers, minDate, maxDate, keptSlotsByDate) {
+    await applyGymsCsvActions(customers);
+    const staleLogs = state.data.log.filter((l) => l.date >= minDate && l.date <= maxDate);
+    for (const log of staleLogs) {
+      const member = state.data.members.find((m) => m.id === log.memberId);
+      if (!member) continue;
+      const kept = keptSlotsByDate.get(log.date);
+      const key = `${member.name}|${log.time || ''}`;
+      if (!kept || !kept.has(key)) {
+        await deleteLogRow(log.id, member.id);
       }
     }
     render();
@@ -1742,13 +1787,14 @@
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        let customers;
+        let parsed;
         try {
-          customers = parseGymsCsvForSync(reader.result);
+          parsed = parseGymsCsvForSync(reader.result);
         } catch (err) {
           alert('CSVの読み込みに失敗しました。Gymsから書き出したCSVファイルを選択してください。');
           return;
         }
+        const { customers } = parsed;
         if (customers.length === 0) {
           alert('CSVの中に「安里一喜」さんのセッションが見つかりませんでした。');
           return;
@@ -1758,6 +1804,42 @@
         openConfirm(
           `CSVの内容で更新します。新規会員：${newMemberCount}名、実施・予約の追加/変更/削除：最大${actionCount}件。既存会員の週目標・月目標・契約残り・メモは変更されません。よろしいですか？`,
           () => withBusyGuard(() => runGymsCsvSync(customers))
+        );
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    });
+
+    $('#csv-reconcile-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        let parsed;
+        try {
+          parsed = parseGymsCsvForSync(reader.result);
+        } catch (err) {
+          alert('CSVの読み込みに失敗しました。Gymsから書き出したCSVファイルを選択してください。');
+          return;
+        }
+        const { customers, minDate, maxDate, keptSlotsByDate } = parsed;
+        if (!minDate || !maxDate) {
+          alert('CSVの中に「安里一喜」さんのセッションが見つかりませんでした。');
+          return;
+        }
+        const newMemberCount = customers.filter((c) => c.isNew).length;
+        const actionCount = customers.reduce((sum, c) => sum + c.actions.length, 0);
+        const staleCount = state.data.log.filter((l) => {
+          if (l.date < minDate || l.date > maxDate) return false;
+          const member = state.data.members.find((m) => m.id === l.memberId);
+          if (!member) return false;
+          const kept = keptSlotsByDate.get(l.date);
+          const key = `${member.name}|${l.time || ''}`;
+          return !kept || !kept.has(key);
+        }).length;
+        openConfirm(
+          `セッション日：${minDate}〜${maxDate} の期間で整合性チェックを行います。\n新規会員：${newMemberCount}名\n追加・変更：最大${actionCount}件\nCSVに記載のない記録の削除：${staleCount}件\n\nこの期間の実施・予約データが、CSVの内容に完全に置き換わります。よろしいですか？`,
+          () => withBusyGuard(() => runGymsCsvReconcile(customers, minDate, maxDate, keptSlotsByDate))
         );
       };
       reader.readAsText(file);
