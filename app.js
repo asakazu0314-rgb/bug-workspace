@@ -1148,20 +1148,20 @@
     return lines.join('\n');
   }
 
-  // 会員1人分・今月の「予約中」日程をLINE貼り付け用の文章にする
+  // 会員1人分・今後の「予約中」日程をLINE貼り付け用の文章にする
   function generateMemberBookingText(member) {
-    const monthKey = todayMonthKey();
+    const today = todayISO();
     const bookings = state.data.log
-      .filter((e) => e.memberId === member.id && e.type === 'booked' && e.date.slice(0, 7) === monthKey)
+      .filter((e) => e.memberId === member.id && e.type === 'booked' && e.date >= today)
       .sort((a, b) => {
         if (a.date !== b.date) return a.date < b.date ? -1 : 1;
         const ta = a.time || '99:99';
         const tb = b.time || '99:99';
         return ta < tb ? -1 : ta > tb ? 1 : 0;
       });
-    const lines = [`${member.name}様`, '', 'お疲れ様です！', '今月のご予約日程のお知らせです！🗓️', ''];
+    const lines = [`${member.name}様`, '', 'お疲れ様です！', '今後のご予約日程のお知らせです！🗓️', ''];
     if (bookings.length === 0) {
-      lines.push('現在、今月のご予約はありません。');
+      lines.push('現在、今後のご予約はありません。');
     } else {
       bookings.forEach((e) => {
         const d = parseISO(e.date);
