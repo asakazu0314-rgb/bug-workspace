@@ -257,6 +257,46 @@
         <button type="button" id="avail-copy-btn" class="btn-secondary">コピー</button>
       </div>
     </section>
+
+    <section class="members-toolbar">
+      <div class="members-toolbar-head">
+        <h2>指定時間の空き日程案内</h2>
+      </div>
+      <p class="data-tools-desc">特定の1時間に絞り込んで、その時間が空いている日程だけを曜日つきでLINE用の文章にします（例：「15:00〜16:00が空いている日」を知りたい時に）。</p>
+      <div class="availability-date-range">
+        <label class="filter-field">時間
+          <select id="hour-avail-time">
+            <option value="7">07:00-08:00</option>
+            <option value="8">08:00-09:00</option>
+            <option value="9">09:00-10:00</option>
+            <option value="10">10:00-11:00</option>
+            <option value="11">11:00-12:00</option>
+            <option value="12">12:00-13:00</option>
+            <option value="13">13:00-14:00</option>
+            <option value="14">14:00-15:00</option>
+            <option value="15" selected>15:00-16:00</option>
+            <option value="16">16:00-17:00</option>
+            <option value="17">17:00-18:00</option>
+            <option value="18">18:00-19:00</option>
+            <option value="19">19:00-20:00</option>
+            <option value="20">20:00-21:00</option>
+            <option value="21">21:00-22:00</option>
+            <option value="22">22:00-23:00</option>
+          </select>
+        </label>
+        <label class="filter-field">開始日
+          <input id="hour-avail-start-date" type="date">
+        </label>
+        <label class="filter-field">終了日
+          <input id="hour-avail-end-date" type="date">
+        </label>
+        <button type="button" id="hour-avail-generate-btn" class="btn-primary">文章を作成</button>
+      </div>
+      <textarea id="hour-avail-output" class="availability-output" rows="10" readonly placeholder="「文章を作成」を押すと、ここに結果が表示されます"></textarea>
+      <div class="data-tools-buttons">
+        <button type="button" id="hour-avail-copy-btn" class="btn-secondary">コピー</button>
+      </div>
+    </section>
   </div>
 
   <footer class="app-footer">

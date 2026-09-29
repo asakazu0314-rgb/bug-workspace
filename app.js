@@ -1134,7 +1134,7 @@
     const end = parseISO(endDateStr);
     while (d <= end) {
       const dateStr = isoDate(d);
-      lines.push(`${d.getMonth() + 1}/${d.getDate()}`);
+      lines.push(`${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS_JA[d.getDay()]})`);
       const ranges = freeRangesForDate(dateStr);
       if (ranges.length === 0) {
         lines.push('空きなし');
@@ -1145,6 +1145,35 @@
       d = addDays(d, 1);
     }
     while (lines.length && lines[lines.length - 1] === '') lines.pop();
+    return lines.join('\n');
+  }
+
+  // 指定した1時間（hour時〜hour+1時）が、その日空いているかどうか
+  function isHourFree(dateStr, hour) {
+    if (occupiedHoursForDate(dateStr).has(hour)) return false;
+    if (dateStr === todayISO() && hour < new Date().getHours()) return false;
+    return true;
+  }
+
+  // 開始日〜終了日（両端含む）の中から、指定した1時間が空いている日だけを曜日つきで一覧にする
+  function generateHourAvailabilityText(startDateStr, endDateStr, hour) {
+    const freeDates = [];
+    let d = parseISO(startDateStr);
+    const end = parseISO(endDateStr);
+    while (d <= end) {
+      const dateStr = isoDate(d);
+      if (isHourFree(dateStr, hour)) freeDates.push(dateStr);
+      d = addDays(d, 1);
+    }
+    const lines = [`${formatHourLabel(hour)}-${formatHourLabel(hour + 1)} が空いている日程`, ''];
+    if (freeDates.length === 0) {
+      lines.push('該当する空き日はありません。');
+    } else {
+      freeDates.forEach((dateStr) => {
+        const dd = parseISO(dateStr);
+        lines.push(`${dd.getMonth() + 1}/${dd.getDate()}(${WEEKDAYS_JA[dd.getDay()]})`);
+      });
+    }
     return lines.join('\n');
   }
 
@@ -1862,6 +1891,30 @@
 
     $('#avail-copy-btn').addEventListener('click', () => {
       const text = $('#avail-output').value;
+      if (!text) {
+        alert('先に「文章を作成」を押してください。');
+        return;
+      }
+      copyTextToClipboard(text, () => alert('コピーしました。LINEに貼り付けてください。'));
+    });
+
+    // 指定時間の空き日程案内: 日付初期値（今日〜1週間後）
+    $('#hour-avail-start-date').value = todayISO();
+    $('#hour-avail-end-date').value = isoDate(addDays(new Date(), 6));
+
+    $('#hour-avail-generate-btn').addEventListener('click', () => {
+      const start = $('#hour-avail-start-date').value;
+      const end = $('#hour-avail-end-date').value;
+      const hour = Number($('#hour-avail-time').value);
+      if (!start || !end || start > end) {
+        alert('開始日と終了日を正しく指定してください（開始日は終了日より前にしてください）。');
+        return;
+      }
+      $('#hour-avail-output').value = generateHourAvailabilityText(start, end, hour);
+    });
+
+    $('#hour-avail-copy-btn').addEventListener('click', () => {
+      const text = $('#hour-avail-output').value;
       if (!text) {
         alert('先に「文章を作成」を押してください。');
         return;
