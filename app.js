@@ -678,7 +678,7 @@
 
   function renderMonthNav() {
     $('#month-nav-label').textContent = monthLabel(state.viewMonthKey);
-    $('#month-nav-next').disabled = state.viewMonthKey >= todayMonthKey();
+    $('#month-nav-next').disabled = state.viewMonthKey >= addMonths(todayMonthKey(), 1);
   }
 
   function renderMonthlySummary() {
@@ -1528,7 +1528,7 @@
       render();
     });
     $('#month-nav-next').addEventListener('click', () => {
-      if (state.viewMonthKey < todayMonthKey()) {
+      if (state.viewMonthKey < addMonths(todayMonthKey(), 1)) {
         state.viewMonthKey = addMonths(state.viewMonthKey, 1);
         render();
       }
