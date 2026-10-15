@@ -166,7 +166,7 @@
   // Gyms CSVを使った日次更新用の解析。
   // 既存会員は名前で照合してそのまま残し（週目標・月目標・契約残り・メモは変更しない）、
   // 実施・予約の追加/変更、キャンセルされた予約の削除だけを行う。
-  // ペア判定は、まだ会員登録されていない新規の2人にのみ適用する（既存の個別会員を誤ってペア化しないため）。
+  // グループ判定（2〜3人同時刻）は、まだ会員登録されていない新規の組み合わせにのみ適用する（既存の個別会員を誤ってグループ化しないため）。
   function parseGymsCsvForSync(text) {
     const objects = csvRowsToObjects(parseCsvText(text));
     const rows = objects.filter((r) => {
@@ -203,13 +203,13 @@
       m.name.split('＆').forEach((part) => individualToExistingMember.set(part, m.name));
     });
 
-    // まだどの既存会員にも属していない新規顧客同士の2人組が、繰り返し登場するかを調べる
+    // まだどの既存会員にも属していない新規顧客同士の2〜3人組が、繰り返し登場するかを調べる
     const pairSlotCounts = new Map();
     slots.forEach((slot) => {
       const active = slot.entries.filter((e) => e.status !== 'キャンセル');
-      if (active.length !== 2) return;
+      if (active.length < 2 || active.length > 3) return;
       const names = active.map((e) => e.name).sort();
-      if (individualToExistingMember.has(names[0]) || individualToExistingMember.has(names[1])) return;
+      if (names.some((n) => individualToExistingMember.has(n))) return;
       const key = names.join('__');
       pairSlotCounts.set(key, (pairSlotCounts.get(key) || 0) + 1);
     });
@@ -228,23 +228,22 @@
       const active = slot.entries.filter((e) => e.status !== 'キャンセル');
       const cancelled = slot.entries.filter((e) => e.status === 'キャンセル');
 
-      if (active.length === 2) {
+      if (active.length === 2 || active.length === 3) {
         const names = active.map((e) => e.name).sort();
-        const mappedA = individualToExistingMember.get(names[0]);
-        const mappedB = individualToExistingMember.get(names[1]);
-        // 2人とも既に同じペア会員に属している -> そのペア会員の記録として扱う
-        if (mappedA && mappedA === mappedB) {
-          const entry = getMemberEntry(mappedA);
+        const mapped = names.map((n) => individualToExistingMember.get(n));
+        // 全員が既に同じグループ会員（ペア／3人組）に属している -> そのグループ会員の記録として扱う
+        if (mapped.every((m) => m) && mapped.every((m) => m === mapped[0])) {
+          const entry = getMemberEntry(mapped[0]);
           const type = active.some((e) => e.status === '受講済み') ? 'done' : 'booked';
           entry.actions.push({ date: slot.date, time: slot.time, action: 'upsert', type });
           const courseEntry = active.find((e) => e.course);
           if (courseEntry && !entry.course) entry.course = courseEntry.course;
           return;
         }
-        // どちらの会員にも属していない新規の2人で、繰り返し登場するなら新しいペア会員にする
-        if (!mappedA && !mappedB) {
-          const pairKey = names.join('__');
-          if (qualifyingPairKeys.has(pairKey)) {
+        // 誰も既存会員に属していない新規の組み合わせで、繰り返し登場するなら新しいグループ会員にする
+        if (mapped.every((m) => !m)) {
+          const groupKey = names.join('__');
+          if (qualifyingPairKeys.has(groupKey)) {
             const entry = getMemberEntry(names.join('＆'));
             const type = active.some((e) => e.status === '受講済み') ? 'done' : 'booked';
             entry.actions.push({ date: slot.date, time: slot.time, action: 'upsert', type });
@@ -254,8 +253,8 @@
           }
         }
       }
-      // 上記いずれにも当てはまらない場合（ソロ・片方だけ既存会員・3人以上など）は個別に記録する。
-      // 既に何らかの会員（個人・ペア）に属している名前は、その会員名に振り分ける。
+      // 上記いずれにも当てはまらない場合（ソロ・一部だけ既存会員・4人以上など）は個別に記録する。
+      // 既に何らかの会員（個人・グループ）に属している名前は、その会員名に振り分ける。
       const activeNames = new Set(active.map((e) => e.name));
       active.forEach((e) => {
         const entry = getMemberEntry(individualToExistingMember.get(e.name) || e.name);
