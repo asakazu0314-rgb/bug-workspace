@@ -305,44 +305,26 @@
       <div class="members-toolbar-head">
         <h2>月次レポート（オーナーMTG用）</h2>
       </div>
-      <p class="data-tools-desc">売上・新規獲得経路・カウンセリング対応数・サプリメント契約数など、アプリに記録のない数値だけ、月の初めに1回入力してください。セッション数や会員ごとの頻度は自動で計算されます。入力後は「印刷用に表示」からPDF保存できます。</p>
+      <p class="data-tools-desc">売上・新規獲得経路・カウンセリング対応数・サプリメント契約数は、週ごと（1〜5週目）に数値を入力してください。セッション数や会員ごとの頻度は自動で計算されます。入力後は「印刷用に表示」からPDF保存できます。</p>
 
       <label class="filter-field">対象月
         <input id="report-month-input" type="month">
       </label>
 
-      <div class="report-input-grid">
-        <label>入金売上 目標（円）
-          <input id="report-revenue-target" type="number" inputmode="numeric" min="0">
-        </label>
-        <label>入金売上 実績（円）
-          <input id="report-revenue-actual" type="number" inputmode="numeric" min="0">
-        </label>
-        <label>新規獲得 目標（合計・人）
-          <input id="report-new-member-target" type="number" inputmode="numeric" min="0">
-        </label>
-        <label>新規獲得：オフィシャルLP（人）
-          <input id="report-new-lp" type="number" inputmode="numeric" min="0">
-        </label>
-        <label>新規獲得：Instagram（人）
-          <input id="report-new-instagram" type="number" inputmode="numeric" min="0">
-        </label>
-        <label>新規獲得：Threads（人）
-          <input id="report-new-threads" type="number" inputmode="numeric" min="0">
-        </label>
-        <label>新規獲得：紹介（人）
-          <input id="report-new-referral" type="number" inputmode="numeric" min="0">
-        </label>
-        <label>新規獲得：その他（人）
-          <input id="report-new-other" type="number" inputmode="numeric" min="0">
-        </label>
-        <label>カウンセリング対応数（件）
-          <input id="report-counseling" type="number" inputmode="numeric" min="0">
-        </label>
-        <label>サプリメント契約数（件）
-          <input id="report-supplement" type="number" inputmode="numeric" min="0">
-        </label>
+      <div class="report-table-scroll">
+        <table class="report-table report-input-table">
+          <thead>
+            <tr>
+              <th>項目</th><th>当月目標</th><th>1週目</th><th>2週目</th><th>3週目</th><th>4週目</th><th>5週目</th><th>合計</th><th>達成率</th>
+            </tr>
+          </thead>
+          <tbody id="report-input-table-body"></tbody>
+        </table>
       </div>
+
+      <label class="filter-field">先週店舗MTの振り返り・今週のアクション（自由記入）
+        <textarea id="report-mt-retro" rows="4"></textarea>
+      </label>
 
       <div class="data-tools-buttons">
         <button type="button" id="report-save-btn" class="btn-primary">保存</button>
@@ -356,57 +338,20 @@
         <div><span id="report-print-month-label"></span>・<span id="report-print-generated"></span></div>
       </div>
 
-      <h3>セッション数（店舗全体）</h3>
-      <table class="report-table">
-        <thead><tr><th>目標</th><th>実施</th><th>予約</th><th>着地予想</th><th>達成率</th></tr></thead>
-        <tbody>
-          <tr>
-            <td id="report-session-target"></td>
-            <td id="report-session-done"></td>
-            <td id="report-session-booked"></td>
-            <td id="report-session-landing"></td>
-            <td id="report-session-rate"></td>
-          </tr>
-        </tbody>
-      </table>
+      <h3>売上見込み及びセッション頻度</h3>
+      <div class="report-table-scroll">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>項目</th><th>当月目標</th><th>1週目</th><th>2週目</th><th>3週目</th><th>4週目</th><th>5週目</th><th>合計</th><th>達成率</th>
+            </tr>
+          </thead>
+          <tbody id="report-print-table-body"></tbody>
+        </table>
+      </div>
 
-      <h3>入金売上</h3>
-      <table class="report-table">
-        <thead><tr><th>目標</th><th>実績</th></tr></thead>
-        <tbody>
-          <tr>
-            <td id="report-revenue-target-echo"></td>
-            <td id="report-revenue-actual-echo"></td>
-          </tr>
-        </tbody>
-      </table>
-
-      <h3>新規獲得内訳</h3>
-      <table class="report-table">
-        <thead><tr><th>オフィシャルLP</th><th>Instagram</th><th>Threads</th><th>紹介</th><th>その他</th><th>合計</th><th>目標</th></tr></thead>
-        <tbody>
-          <tr>
-            <td id="report-print-lp"></td>
-            <td id="report-print-instagram"></td>
-            <td id="report-print-threads"></td>
-            <td id="report-print-referral"></td>
-            <td id="report-print-other"></td>
-            <td id="report-new-total"></td>
-            <td id="report-new-target-echo"></td>
-          </tr>
-        </tbody>
-      </table>
-
-      <h3>カウンセリング・サプリメント</h3>
-      <table class="report-table">
-        <thead><tr><th>カウンセリング対応数</th><th>サプリメント契約数</th></tr></thead>
-        <tbody>
-          <tr>
-            <td id="report-counseling-echo"></td>
-            <td id="report-supplement-echo"></td>
-          </tr>
-        </tbody>
-      </table>
+      <h3>先週店舗MTの振り返り・今週のアクション</h3>
+      <p id="report-print-mt-retro" class="report-memo-cell"></p>
 
       <h3>会員別セッション頻度</h3>
       <table class="report-table report-frequency-table">

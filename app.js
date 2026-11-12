@@ -667,47 +667,102 @@
   }
 
   // ---------- 月次レポート（オーナーMTG用の手入力数値） ----------
-  const MONTHLY_REPORT_FIELD_LABELS = {
-    revenue_target: '入金売上目標',
-    revenue_actual: '入金売上実績',
-    new_member_target: '新規獲得目標',
-    new_lp: 'オフィシャルLP',
-    new_instagram: 'Instagram',
-    new_threads: 'Threads',
-    new_referral: '紹介',
-    new_other: 'その他',
-    counseling_actual: 'カウンセリング対応数',
-    supplement_actual: 'サプリメント契約数',
-  };
+  // 新規獲得・カウンセリングは経路別 x 週ごとに入力するため、経路の定義をここにまとめておく
+  const REPORT_CHANNELS = [
+    { key: 'lp', label: 'オフィシャルLP' },
+    { key: 'instagram', label: 'Instagram' },
+    { key: 'threads', label: 'Threads' },
+    { key: 'referral', label: '紹介' },
+    { key: 'other', label: 'その他' },
+  ];
+
+  function emptyWeeks() {
+    return [0, 0, 0, 0, 0];
+  }
+
+  function emptyChannelWeeks() {
+    const obj = {};
+    REPORT_CHANNELS.forEach((c) => {
+      obj[c.key] = emptyWeeks();
+    });
+    return obj;
+  }
+
+  function defaultWeeklyData() {
+    return {
+      revenue: { target: 0, weeks: emptyWeeks() },
+      new_member: { target: 0, channels: emptyChannelWeeks() },
+      counseling: { target: 0, channels: emptyChannelWeeks() },
+      supplement: { target: 0, weeks: emptyWeeks() },
+    };
+  }
+
+  // Supabaseから読み込んだJSONを、欠けている項目があっても安全に扱える形に整える
+  function normalizeWeeklyData(raw) {
+    const pickWeeks = (arr) => {
+      const out = emptyWeeks();
+      if (Array.isArray(arr)) {
+        for (let i = 0; i < 5; i++) out[i] = Math.max(0, parseInt(arr[i], 10) || 0);
+      }
+      return out;
+    };
+    const pickChannels = (obj) => {
+      const out = {};
+      REPORT_CHANNELS.forEach((c) => {
+        out[c.key] = pickWeeks(obj && obj[c.key]);
+      });
+      return out;
+    };
+    const r = raw && typeof raw === 'object' ? raw : {};
+    return {
+      revenue: { target: Math.max(0, parseInt(r.revenue && r.revenue.target, 10) || 0), weeks: pickWeeks(r.revenue && r.revenue.weeks) },
+      new_member: {
+        target: Math.max(0, parseInt(r.new_member && r.new_member.target, 10) || 0),
+        channels: pickChannels(r.new_member && r.new_member.channels),
+      },
+      counseling: {
+        target: Math.max(0, parseInt(r.counseling && r.counseling.target, 10) || 0),
+        channels: pickChannels(r.counseling && r.counseling.channels),
+      },
+      supplement: { target: Math.max(0, parseInt(r.supplement && r.supplement.target, 10) || 0), weeks: pickWeeks(r.supplement && r.supplement.weeks) },
+    };
+  }
 
   function defaultMonthlyReport(month) {
-    return {
-      month,
-      revenue_target: 0,
-      revenue_actual: 0,
-      new_member_target: 0,
-      new_lp: 0,
-      new_instagram: 0,
-      new_threads: 0,
-      new_referral: 0,
-      new_other: 0,
-      counseling_actual: 0,
-      supplement_actual: 0,
-    };
+    return { id: null, month, weekly_data: defaultWeeklyData(), mt_retro: '' };
+  }
+
+  // その月を5週に機械的に分けた日付範囲を返す（1〜7日, 8〜14日, 15〜21日, 22〜28日, 29日〜月末）
+  function monthWeekRanges(monthKey) {
+    const total = daysInMonth(monthKey);
+    const ranges = [];
+    for (let w = 0; w < 5; w++) {
+      const startDay = w * 7 + 1;
+      if (startDay > total) {
+        ranges.push(null);
+        continue;
+      }
+      const endDay = w === 4 ? total : Math.min((w + 1) * 7, total);
+      ranges.push({ start: `${monthKey}-${pad2(startDay)}`, end: `${monthKey}-${pad2(endDay)}` });
+    }
+    return ranges;
   }
 
   async function fetchMonthlyReport(month) {
     const { data, error } = await supabase.from('monthly_reports').select('*').eq('month', month);
     if (error) throw error;
-    return (data && data[0]) || null;
+    const row = (data && data[0]) || null;
+    if (!row) return null;
+    return { id: row.id, month: row.month, weekly_data: normalizeWeeklyData(row.weekly_data), mt_retro: row.mt_retro || '' };
   }
 
-  async function saveMonthlyReport(month, fields) {
+  async function saveMonthlyReport(month, weeklyData, mtRetro) {
+    const fields = { weekly_data: weeklyData, mt_retro: mtRetro || '' };
     const existing = await fetchMonthlyReport(month);
-    if (existing) {
+    if (existing && existing.id) {
       const { error } = await supabase.from('monthly_reports').update(fields).eq('id', existing.id);
       if (error) throw error;
-      return { ...existing, ...fields };
+      return { id: existing.id, month, ...fields };
     }
     const { data, error } = await supabase
       .from('monthly_reports')
@@ -715,7 +770,7 @@
       .select()
       .single();
     if (error) throw error;
-    return data;
+    return { id: data.id, month: data.month, weekly_data: normalizeWeeklyData(data.weekly_data), mt_retro: data.mt_retro || '' };
   }
 
   // ---------- rendering ----------
@@ -1166,61 +1221,108 @@
     renderReportAutoSections();
   }
 
+  // 週ごとの表（入力用・印刷用の両方で使う）の行HTMLを組み立てる。
+  // editable=true のときは数値入力欄、falseのときはただの数値表示になる。
+  function reportTableRowsHtml(categories, editable) {
+    const numInput = (field, value) =>
+      `<td><input type="number" inputmode="numeric" min="0" class="report-cell-input" data-field="${field}" value="${Math.max(0, parseInt(value, 10) || 0)}"></td>`;
+
+    return categories
+      .map((cat) => {
+        const fmt = cat.format || ((v) => v);
+        if (cat.type === 'simple') {
+          const total = cat.weeks.reduce((a, b) => a + (Number(b) || 0), 0);
+          const rate = cat.target > 0 ? Math.min(Math.round((total / cat.target) * 100), 999) : 0;
+          const canEdit = editable && !cat.readonly;
+          const targetCell = canEdit ? numInput(`${cat.key}.target`, cat.target) : `<td>${fmt(cat.target)}</td>`;
+          const weekCells = cat.weeks
+            .map((v, i) => (canEdit ? numInput(`${cat.key}.weeks.${i}`, v) : `<td>${fmt(v)}</td>`))
+            .join('');
+          return `<tr><td class="report-row-label">${escapeHtml(cat.label)}</td>${targetCell}${weekCells}<td>${fmt(total)}</td><td>${rate}%</td></tr>`;
+        }
+        // type === 'channels'：経路別の内訳を持つ項目（新規獲得・カウンセリング）
+        const totalsByChannel = REPORT_CHANNELS.map((c) => cat.channels[c.key].reduce((a, b) => a + (Number(b) || 0), 0));
+        const grandTotal = totalsByChannel.reduce((a, b) => a + b, 0);
+        const rate = cat.target > 0 ? Math.min(Math.round((grandTotal / cat.target) * 100), 999) : 0;
+        const targetCell = editable ? numInput(`${cat.key}.target`, cat.target) : `<td>${cat.target}</td>`;
+        const headerRow = `<tr class="report-group-header"><td class="report-row-label">${escapeHtml(cat.label)}</td>${targetCell}<td colspan="5"></td><td>${grandTotal}</td><td>${rate}%</td></tr>`;
+        const channelRows = REPORT_CHANNELS.map((c, idx) => {
+          const weeks = cat.channels[c.key];
+          const weekCells = weeks
+            .map((v, i) => (editable ? numInput(`${cat.key}.channels.${c.key}.${i}`, v) : `<td>${v}</td>`))
+            .join('');
+          return `<tr class="report-subrow"><td class="report-row-label report-row-sub">${escapeHtml(c.label)}</td><td></td>${weekCells}<td>${totalsByChannel[idx]}</td><td></td></tr>`;
+        }).join('');
+        return headerRow + channelRows;
+      })
+      .join('');
+  }
+
   // 手入力フォームへ、読み込んだ月のデータを反映する
   function renderReportForm() {
     const report = state.reportData || defaultMonthlyReport(state.reportMonthKey);
+    const wd = report.weekly_data;
     $('#report-month-input').value = state.reportMonthKey;
-    $('#report-revenue-target').value = report.revenue_target || 0;
-    $('#report-revenue-actual').value = report.revenue_actual || 0;
-    $('#report-new-member-target').value = report.new_member_target || 0;
-    $('#report-new-lp').value = report.new_lp || 0;
-    $('#report-new-instagram').value = report.new_instagram || 0;
-    $('#report-new-threads').value = report.new_threads || 0;
-    $('#report-new-referral').value = report.new_referral || 0;
-    $('#report-new-other').value = report.new_other || 0;
-    $('#report-counseling').value = report.counseling_actual || 0;
-    $('#report-supplement').value = report.supplement_actual || 0;
+    $('#report-mt-retro').value = report.mt_retro || '';
+
+    const categories = [
+      { key: 'revenue', label: '入金売上（円）', type: 'simple', target: wd.revenue.target, weeks: wd.revenue.weeks },
+      { key: 'new_member', label: '新規獲得', type: 'channels', target: wd.new_member.target, channels: wd.new_member.channels },
+      { key: 'counseling', label: 'カウンセリング対応数', type: 'channels', target: wd.counseling.target, channels: wd.counseling.channels },
+      { key: 'supplement', label: 'サプリメント契約数', type: 'simple', target: wd.supplement.target, weeks: wd.supplement.weeks },
+    ];
+    $('#report-input-table-body').innerHTML = reportTableRowsHtml(categories, true);
   }
 
-  // 自動計算できる部分（セッション数の予実・会員別の頻度表・メモ一覧）を描画する。
+  // 入力欄（DOM）から現在の入力値を集めて、weekly_dataの形に組み立てる
+  function collectWeeklyDataFromForm() {
+    const wd = defaultWeeklyData();
+    document.querySelectorAll('#report-input-table-body .report-cell-input').forEach((input) => {
+      const parts = input.dataset.field.split('.');
+      const val = Math.max(0, parseInt(input.value, 10) || 0);
+      const [catKey, kind, a, b] = parts;
+      if (kind === 'target') {
+        wd[catKey].target = val;
+      } else if (kind === 'weeks') {
+        wd[catKey].weeks[Number(a)] = val;
+      } else if (kind === 'channels') {
+        wd[catKey].channels[a][Number(b)] = val;
+      }
+    });
+    return wd;
+  }
+
+  // 自動計算できる部分（セッション数の予実・入力内容の印刷用表示・会員ごとの頻度表）を描画する。
   // 手入力フォームの値には触れないので、通常のrender()から呼んでも安全。
   function renderReportAutoSections() {
     const reportEl = $('#view-report');
     if (!reportEl) return;
     const month = state.reportMonthKey;
     const report = state.reportData || defaultMonthlyReport(month);
+    const wd = report.weekly_data;
 
     $('#report-print-month-label').textContent = monthLabel(month);
     $('#report-print-generated').textContent = `作成日：${todayISO()}`;
+    $('#report-print-mt-retro').textContent = report.mt_retro || '（記入なし）';
 
-    const goal = monthlyGoalFor(month);
-    const done = doneInMonth(null, month);
-    const booked = bookedInMonth(null, month);
-    const landing = done + booked;
-    const rate = goal > 0 ? Math.min(Math.round((done / goal) * 100), 999) : 0;
-    $('#report-session-target').textContent = goal;
-    $('#report-session-done').textContent = done;
-    $('#report-session-booked').textContent = booked;
-    $('#report-session-landing').textContent = landing;
-    $('#report-session-rate').textContent = `${rate}%`;
+    const sessionTarget = monthlyGoalFor(month);
+    const sessionWeeks = monthWeekRanges(month).map((r) => (r ? doneInRange(null, r.start, r.end) : 0));
 
-    const newTotal =
-      (report.new_lp || 0) +
-      (report.new_instagram || 0) +
-      (report.new_threads || 0) +
-      (report.new_referral || 0) +
-      (report.new_other || 0);
-    $('#report-new-total').textContent = newTotal;
-    $('#report-new-target-echo').textContent = report.new_member_target || 0;
-    $('#report-print-lp').textContent = report.new_lp || 0;
-    $('#report-print-instagram').textContent = report.new_instagram || 0;
-    $('#report-print-threads').textContent = report.new_threads || 0;
-    $('#report-print-referral').textContent = report.new_referral || 0;
-    $('#report-print-other').textContent = report.new_other || 0;
-    $('#report-revenue-target-echo').textContent = `¥${(report.revenue_target || 0).toLocaleString()}`;
-    $('#report-revenue-actual-echo').textContent = `¥${(report.revenue_actual || 0).toLocaleString()}`;
-    $('#report-counseling-echo').textContent = report.counseling_actual || 0;
-    $('#report-supplement-echo').textContent = report.supplement_actual || 0;
+    const printCategories = [
+      { key: 'session', label: 'セッション数', type: 'simple', target: sessionTarget, weeks: sessionWeeks, readonly: true },
+      {
+        key: 'revenue',
+        label: '入金売上',
+        type: 'simple',
+        target: wd.revenue.target,
+        weeks: wd.revenue.weeks,
+        format: (v) => `¥${Number(v).toLocaleString()}`,
+      },
+      { key: 'new_member', label: '新規獲得', type: 'channels', target: wd.new_member.target, channels: wd.new_member.channels },
+      { key: 'counseling', label: 'カウンセリング対応数', type: 'channels', target: wd.counseling.target, channels: wd.counseling.channels },
+      { key: 'supplement', label: 'サプリメント契約数', type: 'simple', target: wd.supplement.target, weeks: wd.supplement.weeks },
+    ];
+    $('#report-print-table-body').innerHTML = reportTableRowsHtml(printCategories, false);
 
     const thisWeek = currentWeekRange();
     const lastWeek = weekRangeOffset(-1);
@@ -2117,20 +2219,10 @@
     });
 
     $('#report-save-btn').addEventListener('click', () => {
-      const fields = {
-        revenue_target: Math.max(0, parseInt($('#report-revenue-target').value, 10) || 0),
-        revenue_actual: Math.max(0, parseInt($('#report-revenue-actual').value, 10) || 0),
-        new_member_target: Math.max(0, parseInt($('#report-new-member-target').value, 10) || 0),
-        new_lp: Math.max(0, parseInt($('#report-new-lp').value, 10) || 0),
-        new_instagram: Math.max(0, parseInt($('#report-new-instagram').value, 10) || 0),
-        new_threads: Math.max(0, parseInt($('#report-new-threads').value, 10) || 0),
-        new_referral: Math.max(0, parseInt($('#report-new-referral').value, 10) || 0),
-        new_other: Math.max(0, parseInt($('#report-new-other').value, 10) || 0),
-        counseling_actual: Math.max(0, parseInt($('#report-counseling').value, 10) || 0),
-        supplement_actual: Math.max(0, parseInt($('#report-supplement').value, 10) || 0),
-      };
+      const weeklyData = collectWeeklyDataFromForm();
+      const mtRetro = $('#report-mt-retro').value;
       withBusyGuard(async () => {
-        state.reportData = await saveMonthlyReport(state.reportMonthKey, fields);
+        state.reportData = await saveMonthlyReport(state.reportMonthKey, weeklyData, mtRetro);
         renderReportAutoSections();
         alert('保存しました。');
       });

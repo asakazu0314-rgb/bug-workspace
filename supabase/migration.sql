@@ -89,3 +89,22 @@ create policy "Allow anon full access to monthly_reports" on public.monthly_repo
   to anon
   using (true)
   with check (true);
+
+-- 7) 月次レポートを「週ごと（1〜5週目）」の入力に対応させます
+--    数値がかなり増えるため、個別の列ではなく1つのJSON列（weekly_data）にまとめて保存する形に変更します。
+--    （6番で作った列はまだ本番で使われていないため、そのまま入れ替えて問題ありません）
+alter table public.monthly_reports
+  drop column if exists revenue_target,
+  drop column if exists revenue_actual,
+  drop column if exists new_member_target,
+  drop column if exists new_lp,
+  drop column if exists new_instagram,
+  drop column if exists new_threads,
+  drop column if exists new_referral,
+  drop column if exists new_other,
+  drop column if exists counseling_actual,
+  drop column if exists supplement_actual;
+
+alter table public.monthly_reports
+  add column if not exists weekly_data jsonb not null default '{}'::jsonb,
+  add column if not exists mt_retro text not null default '';
