@@ -1233,10 +1233,11 @@
         if (cat.type === 'simple') {
           const total = cat.weeks.reduce((a, b) => a + (Number(b) || 0), 0);
           const rate = cat.target > 0 ? Math.min(Math.round((total / cat.target) * 100), 999) : 0;
-          const canEdit = editable && !cat.readonly;
-          const targetCell = canEdit ? numInput(`${cat.key}.target`, cat.target) : `<td>${fmt(cat.target)}</td>`;
+          const canEditTarget = editable && cat.targetEditable !== false;
+          const canEditWeeks = editable && cat.weeksEditable !== false;
+          const targetCell = canEditTarget ? numInput(`${cat.key}.target`, cat.target) : `<td>${fmt(cat.target)}</td>`;
           const weekCells = cat.weeks
-            .map((v, i) => (canEdit ? numInput(`${cat.key}.weeks.${i}`, v) : `<td>${fmt(v)}</td>`))
+            .map((v, i) => (canEditWeeks ? numInput(`${cat.key}.weeks.${i}`, v) : `<td>${fmt(v)}</td>`))
             .join('');
           return `<tr><td class="report-row-label">${escapeHtml(cat.label)}</td>${targetCell}${weekCells}<td>${fmt(total)}</td><td>${rate}%</td></tr>`;
         }
@@ -1265,7 +1266,12 @@
     $('#report-month-input').value = state.reportMonthKey;
     $('#report-mt-retro').value = report.mt_retro || '';
 
+    // セッション数の目標は、ダッシュボードの「月間目標」設定と共通の値を使う（実績は記録から自動計算・編集不可）
+    const sessionTarget = monthlyGoalFor(state.reportMonthKey);
+    const sessionWeeks = monthWeekRanges(state.reportMonthKey).map((r) => (r ? doneInRange(null, r.start, r.end) : 0));
+
     const categories = [
+      { key: 'session', label: 'セッション数', type: 'simple', target: sessionTarget, weeks: sessionWeeks, weeksEditable: false },
       { key: 'revenue', label: '入金売上（円）', type: 'simple', target: wd.revenue.target, weeks: wd.revenue.weeks },
       { key: 'new_member', label: '新規獲得', type: 'channels', target: wd.new_member.target, channels: wd.new_member.channels },
       { key: 'counseling', label: 'カウンセリング対応数', type: 'channels', target: wd.counseling.target, channels: wd.counseling.channels },
@@ -1275,12 +1281,14 @@
   }
 
   // 入力欄（DOM）から現在の入力値を集めて、weekly_dataの形に組み立てる
+  // （セッション数の目標欄はweekly_dataではなく店舗設定の月間目標として別途保存するため、ここでは読み飛ばす）
   function collectWeeklyDataFromForm() {
     const wd = defaultWeeklyData();
     document.querySelectorAll('#report-input-table-body .report-cell-input').forEach((input) => {
       const parts = input.dataset.field.split('.');
-      const val = Math.max(0, parseInt(input.value, 10) || 0);
       const [catKey, kind, a, b] = parts;
+      if (!wd[catKey]) return;
+      const val = Math.max(0, parseInt(input.value, 10) || 0);
       if (kind === 'target') {
         wd[catKey].target = val;
       } else if (kind === 'weeks') {
@@ -1309,7 +1317,7 @@
     const sessionWeeks = monthWeekRanges(month).map((r) => (r ? doneInRange(null, r.start, r.end) : 0));
 
     const printCategories = [
-      { key: 'session', label: 'セッション数', type: 'simple', target: sessionTarget, weeks: sessionWeeks, readonly: true },
+      { key: 'session', label: 'セッション数', type: 'simple', target: sessionTarget, weeks: sessionWeeks },
       {
         key: 'revenue',
         label: '入金売上',
@@ -2221,9 +2229,15 @@
     $('#report-save-btn').addEventListener('click', () => {
       const weeklyData = collectWeeklyDataFromForm();
       const mtRetro = $('#report-mt-retro').value;
+      const sessionTargetInput = document.querySelector('[data-field="session.target"]');
+      if (sessionTargetInput) {
+        state.settings.monthlyGoalByMonth[state.reportMonthKey] = Math.max(0, parseInt(sessionTargetInput.value, 10) || 0);
+        saveLocalSettings();
+      }
       withBusyGuard(async () => {
         state.reportData = await saveMonthlyReport(state.reportMonthKey, weeklyData, mtRetro);
-        renderReportAutoSections();
+        renderReportForm();
+        render();
         alert('保存しました。');
       });
     });
