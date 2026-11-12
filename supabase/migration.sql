@@ -59,3 +59,33 @@ create policy "Allow anon full access to session_logs" on public.session_logs
 --    Google Apps Scriptが、この記録と対応するカレンダーの予定を突き合わせるために使います。
 alter table public.session_logs
   add column if not exists calendar_event_id text;
+
+-- 5) 月次レポート（オーナーMTG用）: 会員のランクを記録できるようにします（任意項目。SS/S/A/B/C想定）
+alter table public.members
+  add column if not exists rank text;
+
+-- 6) 月次レポート（オーナーMTG用）: 月ごとに手入力する数値（売上・新規獲得経路・カウンセリング・サプリメント）を保存するテーブル
+create table if not exists public.monthly_reports (
+  id bigint generated always as identity primary key,
+  month text not null unique, -- 'YYYY-MM'
+  revenue_target int8 not null default 0,
+  revenue_actual int8 not null default 0,
+  new_member_target int8 not null default 0,
+  new_lp int8 not null default 0,
+  new_instagram int8 not null default 0,
+  new_threads int8 not null default 0,
+  new_referral int8 not null default 0,
+  new_other int8 not null default 0,
+  counseling_actual int8 not null default 0,
+  supplement_actual int8 not null default 0,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.monthly_reports enable row level security;
+
+drop policy if exists "Allow anon full access to monthly_reports" on public.monthly_reports;
+create policy "Allow anon full access to monthly_reports" on public.monthly_reports
+  for all
+  to anon
+  using (true)
+  with check (true);
