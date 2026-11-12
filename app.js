@@ -75,6 +75,13 @@
     return { start: isoDate(ws), end: isoDate(we), key: isoDate(ws) };
   }
 
+  // 今週を0として、offsetWeeks週分ずらした週（月〜日）の範囲を返す（マイナスで過去の週）
+  function weekRangeOffset(offsetWeeks) {
+    const ws = addDays(getWeekStart(new Date()), offsetWeeks * 7);
+    const we = addDays(ws, 6);
+    return { start: isoDate(ws), end: isoDate(we) };
+  }
+
   function weekLabel(range) {
     const s = parseISO(range.start);
     const e = parseISO(range.end);
@@ -399,6 +406,8 @@
     membersFilter: { query: '', course: 'all', status: 'all', sort: 'name' },
     detailMemberId: null,
     busy: false,
+    reportMonthKey: todayMonthKey(),
+    reportData: null, // 現在表示中の月のmonthly_reports行（未作成ならnull）
   };
 
   function getCalendarMonthKey(memberId) {
@@ -436,6 +445,7 @@
       monthlyGoal: row.monthly_target || 0,
       remainingContract: row.remaining_contract || 0,
       memo: row.memo || '',
+      rank: row.rank || '',
     };
   }
 
@@ -447,6 +457,7 @@
       monthly_target: m.monthlyGoal,
       remaining_contract: m.remainingContract,
       memo: m.memo,
+      rank: m.rank || null,
     };
   }
 
@@ -461,6 +472,7 @@
     monthly_target: '月の目標セッション数',
     remaining_contract: '契約残りセッション数',
     memo: 'メモ',
+    rank: 'ランク',
   };
 
   // 送信した内容とSupabaseが実際に保存した内容を突き合わせ、ズレがあれば警告する
@@ -654,6 +666,58 @@
     await syncMemberCounts(memberId);
   }
 
+  // ---------- 月次レポート（オーナーMTG用の手入力数値） ----------
+  const MONTHLY_REPORT_FIELD_LABELS = {
+    revenue_target: '入金売上目標',
+    revenue_actual: '入金売上実績',
+    new_member_target: '新規獲得目標',
+    new_lp: 'オフィシャルLP',
+    new_instagram: 'Instagram',
+    new_threads: 'Threads',
+    new_referral: '紹介',
+    new_other: 'その他',
+    counseling_actual: 'カウンセリング対応数',
+    supplement_actual: 'サプリメント契約数',
+  };
+
+  function defaultMonthlyReport(month) {
+    return {
+      month,
+      revenue_target: 0,
+      revenue_actual: 0,
+      new_member_target: 0,
+      new_lp: 0,
+      new_instagram: 0,
+      new_threads: 0,
+      new_referral: 0,
+      new_other: 0,
+      counseling_actual: 0,
+      supplement_actual: 0,
+    };
+  }
+
+  async function fetchMonthlyReport(month) {
+    const { data, error } = await supabase.from('monthly_reports').select('*').eq('month', month);
+    if (error) throw error;
+    return (data && data[0]) || null;
+  }
+
+  async function saveMonthlyReport(month, fields) {
+    const existing = await fetchMonthlyReport(month);
+    if (existing) {
+      const { error } = await supabase.from('monthly_reports').update(fields).eq('id', existing.id);
+      if (error) throw error;
+      return { ...existing, ...fields };
+    }
+    const { data, error } = await supabase
+      .from('monthly_reports')
+      .insert({ month, ...fields })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
   // ---------- rendering ----------
   const $ = (sel) => document.querySelector(sel);
 
@@ -672,6 +736,9 @@
     }
     if (memberDayContext && !$('#member-day-modal').classList.contains('hidden')) {
       renderMemberDayModal();
+    }
+    if (state.activeView === 'report') {
+      renderReportAutoSections();
     }
   }
 
@@ -1086,6 +1153,113 @@
       : `<p class="empty-msg">今月、実施済み回数が月目標に届いていない会員はいません。</p>`;
   }
 
+  // ---------- 月次レポート（オーナーMTG用） ----------
+  async function loadAndRenderReport() {
+    const month = state.reportMonthKey;
+    try {
+      state.reportData = (await fetchMonthlyReport(month)) || defaultMonthlyReport(month);
+    } catch (err) {
+      console.error('月次レポートの読み込みに失敗しました', err);
+      state.reportData = defaultMonthlyReport(month);
+    }
+    renderReportForm();
+    renderReportAutoSections();
+  }
+
+  // 手入力フォームへ、読み込んだ月のデータを反映する
+  function renderReportForm() {
+    const report = state.reportData || defaultMonthlyReport(state.reportMonthKey);
+    $('#report-month-input').value = state.reportMonthKey;
+    $('#report-revenue-target').value = report.revenue_target || 0;
+    $('#report-revenue-actual').value = report.revenue_actual || 0;
+    $('#report-new-member-target').value = report.new_member_target || 0;
+    $('#report-new-lp').value = report.new_lp || 0;
+    $('#report-new-instagram').value = report.new_instagram || 0;
+    $('#report-new-threads').value = report.new_threads || 0;
+    $('#report-new-referral').value = report.new_referral || 0;
+    $('#report-new-other').value = report.new_other || 0;
+    $('#report-counseling').value = report.counseling_actual || 0;
+    $('#report-supplement').value = report.supplement_actual || 0;
+  }
+
+  // 自動計算できる部分（セッション数の予実・会員別の頻度表・メモ一覧）を描画する。
+  // 手入力フォームの値には触れないので、通常のrender()から呼んでも安全。
+  function renderReportAutoSections() {
+    const reportEl = $('#view-report');
+    if (!reportEl) return;
+    const month = state.reportMonthKey;
+    const report = state.reportData || defaultMonthlyReport(month);
+
+    $('#report-print-month-label').textContent = monthLabel(month);
+    $('#report-print-generated').textContent = `作成日：${todayISO()}`;
+
+    const goal = monthlyGoalFor(month);
+    const done = doneInMonth(null, month);
+    const booked = bookedInMonth(null, month);
+    const landing = done + booked;
+    const rate = goal > 0 ? Math.min(Math.round((done / goal) * 100), 999) : 0;
+    $('#report-session-target').textContent = goal;
+    $('#report-session-done').textContent = done;
+    $('#report-session-booked').textContent = booked;
+    $('#report-session-landing').textContent = landing;
+    $('#report-session-rate').textContent = `${rate}%`;
+
+    const newTotal =
+      (report.new_lp || 0) +
+      (report.new_instagram || 0) +
+      (report.new_threads || 0) +
+      (report.new_referral || 0) +
+      (report.new_other || 0);
+    $('#report-new-total').textContent = newTotal;
+    $('#report-new-target-echo').textContent = report.new_member_target || 0;
+    $('#report-print-lp').textContent = report.new_lp || 0;
+    $('#report-print-instagram').textContent = report.new_instagram || 0;
+    $('#report-print-threads').textContent = report.new_threads || 0;
+    $('#report-print-referral').textContent = report.new_referral || 0;
+    $('#report-print-other').textContent = report.new_other || 0;
+    $('#report-revenue-target-echo').textContent = `¥${(report.revenue_target || 0).toLocaleString()}`;
+    $('#report-revenue-actual-echo').textContent = `¥${(report.revenue_actual || 0).toLocaleString()}`;
+    $('#report-counseling-echo').textContent = report.counseling_actual || 0;
+    $('#report-supplement-echo').textContent = report.supplement_actual || 0;
+
+    const thisWeek = currentWeekRange();
+    const lastWeek = weekRangeOffset(-1);
+    const twoWeeksAgo = weekRangeOffset(-2);
+
+    const rows = state.data.members
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name, 'ja'))
+      .map((m) => {
+        const thisWeekCount = doneInRange(m.id, thisWeek.start, thisWeek.end);
+        const lastWeekCount = doneInRange(m.id, lastWeek.start, lastWeek.end);
+        const twoWeeksAgoCount = doneInRange(m.id, twoWeeksAgo.start, twoWeeksAgo.end);
+        const monthCount = doneInMonth(m.id, month);
+        const avg = ((lastWeekCount + twoWeeksAgoCount) / 2).toFixed(1);
+        return { m, thisWeekCount, lastWeekCount, twoWeeksAgoCount, monthCount, avg };
+      });
+
+    const tbody = $('#report-frequency-table-body');
+    if (tbody) {
+      tbody.innerHTML = state.data.members.length
+        ? rows
+            .map(
+              (r) => `
+        <tr>
+          <td>${escapeHtml(r.m.name)}</td>
+          <td>${escapeHtml(r.m.rank || '-')}</td>
+          <td>${r.monthCount}</td>
+          <td>${r.thisWeekCount}</td>
+          <td>${r.lastWeekCount}</td>
+          <td>${r.twoWeeksAgoCount}</td>
+          <td>${r.avg}</td>
+          <td class="report-memo-cell">${escapeHtml(r.m.memo || '')}</td>
+        </tr>`
+            )
+            .join('')
+        : `<tr><td colspan="8">まだ会員が登録されていません。</td></tr>`;
+    }
+  }
+
   // ---------- 空き時間案内（LINE用テキスト生成） ----------
   const BUSINESS_START_HOUR = 7;
   const BUSINESS_END_HOUR = 23; // この時刻ちょうどまでが営業時間（23:00終了）
@@ -1299,6 +1473,7 @@
     $('#detail-contract').textContent = `${m.remainingContract}回`;
     $('#detail-weekly-freq').textContent = `週${m.weeklyFreq}回`;
     $('#detail-monthly-goal').textContent = `${m.monthlyGoal}回`;
+    $('#detail-rank').textContent = m.rank || '未設定';
     $('#detail-memo').textContent = m.memo || 'メモはありません';
 
     $('#detail-done').textContent = stats.done;
@@ -1429,6 +1604,7 @@
     $('#member-monthly-goal').value = member ? member.monthlyGoal : 8;
     $('#member-remaining-contract').value = member ? member.remainingContract : 0;
     $('#member-memo').value = member ? member.memo : '';
+    $('#member-rank').value = member ? member.rank || '' : '';
     openModal('#member-modal');
   }
 
@@ -1514,6 +1690,9 @@
     document.querySelectorAll('.app-tab').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.view === view);
     });
+    if (view === 'report') {
+      withBusyGuard(loadAndRenderReport);
+    }
   }
 
   // ---------- event wiring ----------
@@ -1689,6 +1868,7 @@
         monthlyGoal: Math.max(0, parseInt($('#member-monthly-goal').value, 10) || 0),
         remainingContract: Math.max(0, parseInt($('#member-remaining-contract').value, 10) || 0),
         memo: $('#member-memo').value.trim(),
+        rank: $('#member-rank').value,
       };
       withBusyGuard(async () => {
         if (id) {
@@ -1926,6 +2106,38 @@
       if (!m) return;
       const text = generateMemberBookingText(m);
       copyTextToClipboard(text, () => alert('コピーしました。LINEに貼り付けてください。'));
+    });
+
+    // 月次レポート
+    $('#report-month-input').value = state.reportMonthKey;
+    $('#report-month-input').addEventListener('change', (e) => {
+      if (!e.target.value) return;
+      state.reportMonthKey = e.target.value;
+      withBusyGuard(loadAndRenderReport);
+    });
+
+    $('#report-save-btn').addEventListener('click', () => {
+      const fields = {
+        revenue_target: Math.max(0, parseInt($('#report-revenue-target').value, 10) || 0),
+        revenue_actual: Math.max(0, parseInt($('#report-revenue-actual').value, 10) || 0),
+        new_member_target: Math.max(0, parseInt($('#report-new-member-target').value, 10) || 0),
+        new_lp: Math.max(0, parseInt($('#report-new-lp').value, 10) || 0),
+        new_instagram: Math.max(0, parseInt($('#report-new-instagram').value, 10) || 0),
+        new_threads: Math.max(0, parseInt($('#report-new-threads').value, 10) || 0),
+        new_referral: Math.max(0, parseInt($('#report-new-referral').value, 10) || 0),
+        new_other: Math.max(0, parseInt($('#report-new-other').value, 10) || 0),
+        counseling_actual: Math.max(0, parseInt($('#report-counseling').value, 10) || 0),
+        supplement_actual: Math.max(0, parseInt($('#report-supplement').value, 10) || 0),
+      };
+      withBusyGuard(async () => {
+        state.reportData = await saveMonthlyReport(state.reportMonthKey, fields);
+        renderReportAutoSections();
+        alert('保存しました。');
+      });
+    });
+
+    $('#report-print-btn').addEventListener('click', () => {
+      window.print();
     });
   }
 

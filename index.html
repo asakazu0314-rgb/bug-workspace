@@ -299,6 +299,125 @@
     </section>
   </div>
 
+  <!-- 月次レポート（オーナーMTG用） -->
+  <div id="view-report" class="app-view hidden">
+    <section class="members-toolbar">
+      <div class="members-toolbar-head">
+        <h2>月次レポート（オーナーMTG用）</h2>
+      </div>
+      <p class="data-tools-desc">売上・新規獲得経路・カウンセリング対応数・サプリメント契約数など、アプリに記録のない数値だけ、月の初めに1回入力してください。セッション数や会員ごとの頻度は自動で計算されます。入力後は「印刷用に表示」からPDF保存できます。</p>
+
+      <label class="filter-field">対象月
+        <input id="report-month-input" type="month">
+      </label>
+
+      <div class="report-input-grid">
+        <label>入金売上 目標（円）
+          <input id="report-revenue-target" type="number" inputmode="numeric" min="0">
+        </label>
+        <label>入金売上 実績（円）
+          <input id="report-revenue-actual" type="number" inputmode="numeric" min="0">
+        </label>
+        <label>新規獲得 目標（合計・人）
+          <input id="report-new-member-target" type="number" inputmode="numeric" min="0">
+        </label>
+        <label>新規獲得：オフィシャルLP（人）
+          <input id="report-new-lp" type="number" inputmode="numeric" min="0">
+        </label>
+        <label>新規獲得：Instagram（人）
+          <input id="report-new-instagram" type="number" inputmode="numeric" min="0">
+        </label>
+        <label>新規獲得：Threads（人）
+          <input id="report-new-threads" type="number" inputmode="numeric" min="0">
+        </label>
+        <label>新規獲得：紹介（人）
+          <input id="report-new-referral" type="number" inputmode="numeric" min="0">
+        </label>
+        <label>新規獲得：その他（人）
+          <input id="report-new-other" type="number" inputmode="numeric" min="0">
+        </label>
+        <label>カウンセリング対応数（件）
+          <input id="report-counseling" type="number" inputmode="numeric" min="0">
+        </label>
+        <label>サプリメント契約数（件）
+          <input id="report-supplement" type="number" inputmode="numeric" min="0">
+        </label>
+      </div>
+
+      <div class="data-tools-buttons">
+        <button type="button" id="report-save-btn" class="btn-primary">保存</button>
+        <button type="button" id="report-print-btn" class="btn-secondary">印刷用に表示（PDF保存）</button>
+      </div>
+    </section>
+
+    <section id="report-printable" class="report-printable">
+      <div class="report-print-header">
+        <h2>BUG泡瀬店 月次レポート</h2>
+        <div><span id="report-print-month-label"></span>・<span id="report-print-generated"></span></div>
+      </div>
+
+      <h3>セッション数（店舗全体）</h3>
+      <table class="report-table">
+        <thead><tr><th>目標</th><th>実施</th><th>予約</th><th>着地予想</th><th>達成率</th></tr></thead>
+        <tbody>
+          <tr>
+            <td id="report-session-target"></td>
+            <td id="report-session-done"></td>
+            <td id="report-session-booked"></td>
+            <td id="report-session-landing"></td>
+            <td id="report-session-rate"></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>入金売上</h3>
+      <table class="report-table">
+        <thead><tr><th>目標</th><th>実績</th></tr></thead>
+        <tbody>
+          <tr>
+            <td id="report-revenue-target-echo"></td>
+            <td id="report-revenue-actual-echo"></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>新規獲得内訳</h3>
+      <table class="report-table">
+        <thead><tr><th>オフィシャルLP</th><th>Instagram</th><th>Threads</th><th>紹介</th><th>その他</th><th>合計</th><th>目標</th></tr></thead>
+        <tbody>
+          <tr>
+            <td id="report-print-lp"></td>
+            <td id="report-print-instagram"></td>
+            <td id="report-print-threads"></td>
+            <td id="report-print-referral"></td>
+            <td id="report-print-other"></td>
+            <td id="report-new-total"></td>
+            <td id="report-new-target-echo"></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>カウンセリング・サプリメント</h3>
+      <table class="report-table">
+        <thead><tr><th>カウンセリング対応数</th><th>サプリメント契約数</th></tr></thead>
+        <tbody>
+          <tr>
+            <td id="report-counseling-echo"></td>
+            <td id="report-supplement-echo"></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>会員別セッション頻度</h3>
+      <table class="report-table report-frequency-table">
+        <thead>
+          <tr><th>氏名</th><th>ランク</th><th>今月</th><th>今週</th><th>先週</th><th>2週間前</th><th>週平均</th><th>メモ・状況</th></tr>
+        </thead>
+        <tbody id="report-frequency-table-body"></tbody>
+      </table>
+    </section>
+  </div>
+
   <footer class="app-footer">
     <p>BUG泡瀬店 専用ツール ・ 会員データはSupabaseに保存されます</p>
   </footer>
@@ -312,6 +431,7 @@
   <button type="button" class="app-tab" data-view="no-booking">予約なし</button>
   <button type="button" class="app-tab" data-view="approach">予約アプローチ</button>
   <button type="button" class="app-tab" data-view="availability">空き時間案内</button>
+  <button type="button" class="app-tab" data-view="report">月次レポート</button>
 </nav>
 
 <div id="loading-overlay" class="loading-overlay hidden">
@@ -343,6 +463,16 @@
       </label>
       <label>契約残りセッション数
         <input id="member-remaining-contract" type="number" inputmode="numeric" min="0" required>
+      </label>
+      <label>ランク（任意・オーナーMTG用）
+        <select id="member-rank">
+          <option value="">未設定</option>
+          <option value="SS">SS</option>
+          <option value="S">S</option>
+          <option value="A">A</option>
+          <option value="B">B</option>
+          <option value="C">C</option>
+        </select>
       </label>
       <label>メモ
         <textarea id="member-memo" rows="3" placeholder="体調・要望・食事メモなど"></textarea>
@@ -437,6 +567,7 @@
         <div class="detail-grid-item"><span>契約残数</span><strong id="detail-contract"></strong></div>
         <div class="detail-grid-item"><span>週の目標頻度</span><strong id="detail-weekly-freq"></strong></div>
         <div class="detail-grid-item"><span>月目標</span><strong id="detail-monthly-goal"></strong></div>
+        <div class="detail-grid-item"><span>ランク</span><strong id="detail-rank"></strong></div>
       </div>
       <p class="detail-memo" id="detail-memo"></p>
     </div>

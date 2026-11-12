@@ -1024,3 +1024,83 @@ button.day-detail-name { color: var(--primary-dark); text-decoration: underline;
     color: var(--text);
   }
 }
+
+/* ---------- 月次レポート ---------- */
+.report-input-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px 14px;
+  margin-top: 14px;
+}
+.report-input-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.report-input-grid input {
+  font-size: 0.95rem;
+  padding: 9px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text);
+  font-family: inherit;
+}
+.report-printable {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+}
+.report-print-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 10px;
+}
+.report-print-header h2 { margin: 0; font-size: 1.1rem; }
+.report-print-header div { font-size: 0.85rem; color: var(--text-muted); }
+.report-printable h3 {
+  margin: 20px 0 8px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.report-printable h3:first-of-type { margin-top: 4px; }
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.report-table th,
+.report-table td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: center;
+}
+.report-table th { background: rgba(127, 127, 127, 0.12); }
+.report-frequency-table th:first-child,
+.report-frequency-table td:first-child { text-align: left; }
+.report-memo-cell { text-align: left; white-space: pre-wrap; max-width: 220px; }
+
+@media print {
+  body * { visibility: hidden; }
+  #report-printable, #report-printable * { visibility: visible; }
+  #report-printable {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    border: none;
+    background: #fff;
+    color: #000;
+  }
+  .report-table th { background: #eee; }
+}
