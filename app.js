@@ -736,6 +736,16 @@
     return { id: null, month, weekly_data: defaultWeeklyData(), mt_retro: '' };
   }
 
+  // 直近の週平均（先週・2週間前の実施回数の平均）から、ランク（SS/S/A/B/C）を自動判定する（目安・あとで調整可）
+  function autoRankFromWeeklyAvg(avg) {
+    const n = Number(avg) || 0;
+    if (n >= 2) return 'SS';
+    if (n >= 1.5) return 'S';
+    if (n >= 1) return 'A';
+    if (n >= 0.5) return 'B';
+    return 'C';
+  }
+
   // その月を5週に機械的に分けた日付範囲を返す（1〜7日, 8〜14日, 15〜21日, 22〜28日, 29日〜月末）
   function monthWeekRanges(monthKey) {
     const total = daysInMonth(monthKey);
@@ -1417,7 +1427,7 @@
               (r) => `
         <tr>
           <td>${escapeHtml(r.m.name)}</td>
-          <td>${escapeHtml(r.m.rank || '-')}</td>
+          <td>${autoRankFromWeeklyAvg(r.avg)}</td>
           <td>${r.monthCount}</td>
           <td>${r.thisWeekCount}</td>
           <td>${r.lastWeekCount}</td>
