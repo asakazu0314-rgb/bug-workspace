@@ -733,7 +733,7 @@
   }
 
   function defaultMonthlyReport(month) {
-    return { id: null, month, weekly_data: defaultWeeklyData(), mt_retro: '' };
+    return { id: null, month, weekly_data: defaultWeeklyData(), mt_retro: '', good_points: '', improve_points: '' };
   }
 
   // 直近の週平均（先週・2週間前の実施回数の平均）から、ランク（SS/S/A/B/C）を自動判定する（目安・あとで調整可）
@@ -777,11 +777,18 @@
     if (error) throw error;
     const row = (data && data[0]) || null;
     if (!row) return null;
-    return { id: row.id, month: row.month, weekly_data: normalizeWeeklyData(row.weekly_data), mt_retro: row.mt_retro || '' };
+    return {
+      id: row.id,
+      month: row.month,
+      weekly_data: normalizeWeeklyData(row.weekly_data),
+      mt_retro: row.mt_retro || '',
+      good_points: row.good_points || '',
+      improve_points: row.improve_points || '',
+    };
   }
 
-  async function saveMonthlyReport(month, weeklyData, mtRetro) {
-    const fields = { weekly_data: weeklyData, mt_retro: mtRetro || '' };
+  async function saveMonthlyReport(month, weeklyData, mtRetro, goodPoints, improvePoints) {
+    const fields = { weekly_data: weeklyData, mt_retro: mtRetro || '', good_points: goodPoints || '', improve_points: improvePoints || '' };
     const existing = await fetchMonthlyReport(month);
     if (existing && existing.id) {
       const { error } = await supabase.from('monthly_reports').update(fields).eq('id', existing.id);
@@ -794,7 +801,14 @@
       .select()
       .single();
     if (error) throw error;
-    return { id: data.id, month: data.month, weekly_data: normalizeWeeklyData(data.weekly_data), mt_retro: data.mt_retro || '' };
+    return {
+      id: data.id,
+      month: data.month,
+      weekly_data: normalizeWeeklyData(data.weekly_data),
+      mt_retro: data.mt_retro || '',
+      good_points: data.good_points || '',
+      improve_points: data.improve_points || '',
+    };
   }
 
   // ---------- rendering ----------
@@ -1322,6 +1336,8 @@
     const report = state.reportData || defaultMonthlyReport(state.reportMonthKey);
     $('#report-month-input').value = state.reportMonthKey;
     $('#report-mt-retro').value = report.mt_retro || '';
+    $('#report-good-points').value = report.good_points || '';
+    $('#report-improve-points').value = report.improve_points || '';
     updateReportWeekHeaders(state.reportMonthKey, 'report-input-week-th');
 
     const categories = buildReportCategories(state.reportMonthKey, report.weekly_data);
@@ -1381,23 +1397,33 @@
       setText(`[data-rate="${key}"]`, `${rate}%`);
     });
 
-    renderReportAutoSections(wd, $('#report-mt-retro').value);
+    renderReportAutoSections({
+      weeklyData: wd,
+      mtRetro: $('#report-mt-retro').value,
+      goodPoints: $('#report-good-points').value,
+      improvePoints: $('#report-improve-points').value,
+    });
   }
 
   // 自動計算できる部分（セッション数の予実・入力内容の印刷用表示・会員ごとの頻度表）を描画する。
   // 手入力フォームの値には触れないので、通常のrender()から呼んでも安全。
-  // weeklyDataOverride/mtRetroOverrideを渡すと、保存前の入力中の内容をそのまま印刷用プレビューに反映できる。
-  function renderReportAutoSections(weeklyDataOverride, mtRetroOverride) {
+  // overridesを渡すと、保存前の入力中の内容をそのまま印刷用プレビューに反映できる。
+  function renderReportAutoSections(overrides) {
     const reportEl = $('#view-report');
     if (!reportEl) return;
     const month = state.reportMonthKey;
     const report = state.reportData || defaultMonthlyReport(month);
-    const wd = weeklyDataOverride || report.weekly_data;
-    const mtRetro = mtRetroOverride != null ? mtRetroOverride : report.mt_retro;
+    const o = overrides || {};
+    const wd = o.weeklyData || report.weekly_data;
+    const mtRetro = o.mtRetro != null ? o.mtRetro : report.mt_retro;
+    const goodPoints = o.goodPoints != null ? o.goodPoints : report.good_points;
+    const improvePoints = o.improvePoints != null ? o.improvePoints : report.improve_points;
 
     $('#report-print-month-label').textContent = monthLabel(month);
     $('#report-print-generated').textContent = `作成日：${todayISO()}`;
     $('#report-print-mt-retro').textContent = mtRetro || '（記入なし）';
+    $('#report-print-good-points').textContent = goodPoints || '（記入なし）';
+    $('#report-print-improve-points').textContent = improvePoints || '（記入なし）';
     updateReportWeekHeaders(month, 'report-print-week-th');
 
     const printCategories = buildReportCategories(month, wd, (v) => `¥${Number(v).toLocaleString()}`);
@@ -2299,7 +2325,7 @@
 
     // 入力中（保存前）でも合計・達成率・印刷用プレビューをその場で更新する
     $('#view-report').addEventListener('input', (e) => {
-      if (e.target.classList.contains('report-cell-input') || e.target.id === 'report-mt-retro') {
+      if (e.target.classList.contains('report-cell-input') || e.target.tagName === 'TEXTAREA') {
         recalcReportInputTotals();
       }
     });
@@ -2307,8 +2333,10 @@
     $('#report-save-btn').addEventListener('click', () => {
       const weeklyData = collectWeeklyDataFromForm();
       const mtRetro = $('#report-mt-retro').value;
+      const goodPoints = $('#report-good-points').value;
+      const improvePoints = $('#report-improve-points').value;
       withBusyGuard(async () => {
-        state.reportData = await saveMonthlyReport(state.reportMonthKey, weeklyData, mtRetro);
+        state.reportData = await saveMonthlyReport(state.reportMonthKey, weeklyData, mtRetro, goodPoints, improvePoints);
         renderReportForm();
         renderReportAutoSections();
         alert('保存しました。');
