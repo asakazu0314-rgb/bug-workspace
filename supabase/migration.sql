@@ -108,3 +108,8 @@ alter table public.monthly_reports
 alter table public.monthly_reports
   add column if not exists weekly_data jsonb not null default '{}'::jsonb,
   add column if not exists mt_retro text not null default '';
+
+-- 8) 月次レポート: 「既存会員様アプローチ」欄（先週の良かった点／改善点）を追加します
+alter table public.monthly_reports
+  add column if not exists good_points text not null default '',
+  add column if not exists improve_points text not null default '';

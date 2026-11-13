@@ -1106,6 +1106,12 @@ button.day-detail-name { color: var(--primary-dark); text-decoration: underline;
 .report-frequency-table th:first-child,
 .report-frequency-table td:first-child { text-align: left; }
 .report-memo-cell { text-align: left; white-space: pre-wrap; max-width: 220px; }
+.report-freetext-block {
+  text-align: left;
+  white-space: pre-wrap;
+  line-height: 1.7;
+  word-break: break-word;
+}
 
 @media print {
   body * { visibility: hidden; }
