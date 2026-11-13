@@ -1049,6 +1049,11 @@ button.day-detail-name { color: var(--primary-dark); text-decoration: underline;
   background: rgba(127, 127, 127, 0.1);
   font-weight: 600;
 }
+.report-target-row td {
+  background: rgba(127, 127, 127, 0.05);
+  color: var(--text-muted);
+  font-style: italic;
+}
 .report-table input.report-cell-input {
   width: 100%;
   min-width: 60px;
