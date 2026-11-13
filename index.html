@@ -305,7 +305,7 @@
       <div class="members-toolbar-head">
         <h2>月次レポート（オーナーMTG用）</h2>
       </div>
-      <p class="data-tools-desc">売上・新規獲得経路・カウンセリング対応数・サプリメント契約数は、週ごと（1〜5週目）に数値を入力してください。セッション数の実績と会員ごとの頻度は自動で計算されます（セッション数の「当月目標」はダッシュボードの月間目標設定と共通です）。入力後は「印刷用に表示」からPDF保存できます。</p>
+      <p class="data-tools-desc">目標・実績とも、週ごと（1〜5週目）に数値を入力してください。セッション数の実績と会員ごとの頻度は自動で計算されます。入力後は「印刷用に表示」からPDF保存できます。</p>
 
       <label class="filter-field">対象月
         <input id="report-month-input" type="month">
@@ -315,7 +315,13 @@
         <table class="report-table report-input-table">
           <thead>
             <tr>
-              <th>項目</th><th>当月目標</th><th>1週目</th><th>2週目</th><th>3週目</th><th>4週目</th><th>5週目</th><th>合計</th><th>達成率</th>
+              <th>項目</th>
+              <th id="report-input-week-th-0">1週目</th>
+              <th id="report-input-week-th-1">2週目</th>
+              <th id="report-input-week-th-2">3週目</th>
+              <th id="report-input-week-th-3">4週目</th>
+              <th id="report-input-week-th-4">5週目</th>
+              <th>合計</th><th>達成率</th>
             </tr>
           </thead>
           <tbody id="report-input-table-body"></tbody>
@@ -343,7 +349,13 @@
         <table class="report-table">
           <thead>
             <tr>
-              <th>項目</th><th>当月目標</th><th>1週目</th><th>2週目</th><th>3週目</th><th>4週目</th><th>5週目</th><th>合計</th><th>達成率</th>
+              <th>項目</th>
+              <th id="report-print-week-th-0">1週目</th>
+              <th id="report-print-week-th-1">2週目</th>
+              <th id="report-print-week-th-2">3週目</th>
+              <th id="report-print-week-th-3">4週目</th>
+              <th id="report-print-week-th-4">5週目</th>
+              <th>合計</th><th>達成率</th>
             </tr>
           </thead>
           <tbody id="report-print-table-body"></tbody>

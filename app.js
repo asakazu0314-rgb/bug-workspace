@@ -688,12 +688,15 @@
     return obj;
   }
 
+  // 目標・実績のどちらも週ごとに入力する（セッション数・入金売上・サプリメント契約数・
+  // 新規獲得/カウンセリングの月間目標）。セッション数の実績だけは記録から自動計算するため保存しない。
   function defaultWeeklyData() {
     return {
-      revenue: { target: 0, weeks: emptyWeeks() },
-      new_member: { target: 0, channels: emptyChannelWeeks() },
-      counseling: { target: 0, channels: emptyChannelWeeks() },
-      supplement: { target: 0, weeks: emptyWeeks() },
+      session: { targets: emptyWeeks() },
+      revenue: { targets: emptyWeeks(), weeks: emptyWeeks() },
+      new_member: { targets: emptyWeeks(), channels: emptyChannelWeeks() },
+      counseling: { targets: emptyWeeks(), channels: emptyChannelWeeks() },
+      supplement: { targets: emptyWeeks(), weeks: emptyWeeks() },
     };
   }
 
@@ -715,16 +718,17 @@
     };
     const r = raw && typeof raw === 'object' ? raw : {};
     return {
-      revenue: { target: Math.max(0, parseInt(r.revenue && r.revenue.target, 10) || 0), weeks: pickWeeks(r.revenue && r.revenue.weeks) },
+      session: { targets: pickWeeks(r.session && r.session.targets) },
+      revenue: { targets: pickWeeks(r.revenue && r.revenue.targets), weeks: pickWeeks(r.revenue && r.revenue.weeks) },
       new_member: {
-        target: Math.max(0, parseInt(r.new_member && r.new_member.target, 10) || 0),
+        targets: pickWeeks(r.new_member && r.new_member.targets),
         channels: pickChannels(r.new_member && r.new_member.channels),
       },
       counseling: {
-        target: Math.max(0, parseInt(r.counseling && r.counseling.target, 10) || 0),
+        targets: pickWeeks(r.counseling && r.counseling.targets),
         channels: pickChannels(r.counseling && r.counseling.channels),
       },
-      supplement: { target: Math.max(0, parseInt(r.supplement && r.supplement.target, 10) || 0), weeks: pickWeeks(r.supplement && r.supplement.weeks) },
+      supplement: { targets: pickWeeks(r.supplement && r.supplement.targets), weeks: pickWeeks(r.supplement && r.supplement.weeks) },
     };
   }
 
@@ -746,6 +750,16 @@
       ranges.push({ start: `${monthKey}-${pad2(startDay)}`, end: `${monthKey}-${pad2(endDay)}` });
     }
     return ranges;
+  }
+
+  // 表の見出し（例：「1週目(11/1〜11/7)」）を週ごとに組み立てる
+  function weekHeaderLabels(monthKey) {
+    return monthWeekRanges(monthKey).map((r, i) => {
+      if (!r) return `${i + 1}週目`;
+      const s = parseISO(r.start);
+      const e = parseISO(r.end);
+      return `${i + 1}週目(${s.getMonth() + 1}/${s.getDate()}〜${e.getMonth() + 1}/${e.getDate()})`;
+    });
   }
 
   async function fetchMonthlyReport(month) {
@@ -1223,65 +1237,89 @@
 
   // 週ごとの表（入力用・印刷用の両方で使う）の行HTMLを組み立てる。
   // editable=true のときは数値入力欄、falseのときはただの数値表示になる。
+  // kind: 'weekly-target'（目標行＋実績行の2行。セッション数・入金売上・サプリメント契約数）
+  //       'channels'（目標行＋経路別の実績内訳。新規獲得・カウンセリング）
   function reportTableRowsHtml(categories, editable) {
     const numInput = (field, value) =>
       `<td><input type="number" inputmode="numeric" min="0" class="report-cell-input" data-field="${field}" value="${Math.max(0, parseInt(value, 10) || 0)}"></td>`;
+    const sumArr = (arr) => arr.reduce((a, b) => a + (Number(b) || 0), 0);
 
     return categories
       .map((cat) => {
         const fmt = cat.format || ((v) => v);
-        if (cat.type === 'simple') {
-          const total = cat.weeks.reduce((a, b) => a + (Number(b) || 0), 0);
-          const rate = cat.target > 0 ? Math.min(Math.round((total / cat.target) * 100), 999) : 0;
-          const canEditTarget = editable && cat.targetEditable !== false;
-          const canEditWeeks = editable && cat.weeksEditable !== false;
-          const targetCell = canEditTarget ? numInput(`${cat.key}.target`, cat.target) : `<td>${fmt(cat.target)}</td>`;
-          const weekCells = cat.weeks
-            .map((v, i) => (canEditWeeks ? numInput(`${cat.key}.weeks.${i}`, v) : `<td>${fmt(v)}</td>`))
+        const canEditTarget = editable && cat.targetEditable !== false;
+
+        if (cat.kind === 'weekly-target') {
+          const targetTotal = sumArr(cat.targets);
+          const actualTotal = sumArr(cat.actuals);
+          const rate = targetTotal > 0 ? Math.min(Math.round((actualTotal / targetTotal) * 100), 999) : 0;
+          const canEditActual = editable && cat.actualEditable !== false;
+          const targetCells = cat.targets
+            .map((v, i) => (canEditTarget ? numInput(`${cat.key}.targets.${i}`, v) : `<td>${fmt(v)}</td>`))
             .join('');
-          return `<tr><td class="report-row-label">${escapeHtml(cat.label)}</td>${targetCell}${weekCells}<td>${fmt(total)}</td><td>${rate}%</td></tr>`;
+          const actualCells = cat.actuals
+            .map((v, i) => (canEditActual ? numInput(`${cat.key}.weeks.${i}`, v) : `<td>${fmt(v)}</td>`))
+            .join('');
+          const targetRow = `<tr class="report-target-row"><td class="report-row-label">${escapeHtml(cat.label)}（目標）</td>${targetCells}<td>${fmt(targetTotal)}</td><td></td></tr>`;
+          const actualRow = `<tr><td class="report-row-label">${escapeHtml(cat.label)}（実績）</td>${actualCells}<td>${fmt(actualTotal)}</td><td>${rate}%</td></tr>`;
+          return targetRow + actualRow;
         }
-        // type === 'channels'：経路別の内訳を持つ項目（新規獲得・カウンセリング）
-        const totalsByChannel = REPORT_CHANNELS.map((c) => cat.channels[c.key].reduce((a, b) => a + (Number(b) || 0), 0));
+
+        // kind === 'channels'：経路別の内訳を持つ項目（新規獲得・カウンセリング）。目標は週ごと、経路別は実績のみ。
+        const targetTotal = sumArr(cat.targets);
+        const totalsByChannel = REPORT_CHANNELS.map((c) => sumArr(cat.channels[c.key]));
         const grandTotal = totalsByChannel.reduce((a, b) => a + b, 0);
-        const rate = cat.target > 0 ? Math.min(Math.round((grandTotal / cat.target) * 100), 999) : 0;
-        const targetCell = editable ? numInput(`${cat.key}.target`, cat.target) : `<td>${cat.target}</td>`;
-        const headerRow = `<tr class="report-group-header"><td class="report-row-label">${escapeHtml(cat.label)}</td>${targetCell}<td colspan="5"></td><td>${grandTotal}</td><td>${rate}%</td></tr>`;
+        const rate = targetTotal > 0 ? Math.min(Math.round((grandTotal / targetTotal) * 100), 999) : 0;
+        const targetCells = cat.targets
+          .map((v, i) => (canEditTarget ? numInput(`${cat.key}.targets.${i}`, v) : `<td>${v}</td>`))
+          .join('');
+        const targetRow = `<tr class="report-target-row"><td class="report-row-label">${escapeHtml(cat.label)}（目標）</td>${targetCells}<td>${targetTotal}</td><td></td></tr>`;
+        const totalRow = `<tr class="report-group-header"><td class="report-row-label">${escapeHtml(cat.label)}（実績合計）</td><td colspan="5"></td><td>${grandTotal}</td><td>${rate}%</td></tr>`;
         const channelRows = REPORT_CHANNELS.map((c, idx) => {
           const weeks = cat.channels[c.key];
           const weekCells = weeks
             .map((v, i) => (editable ? numInput(`${cat.key}.channels.${c.key}.${i}`, v) : `<td>${v}</td>`))
             .join('');
-          return `<tr class="report-subrow"><td class="report-row-label report-row-sub">${escapeHtml(c.label)}</td><td></td>${weekCells}<td>${totalsByChannel[idx]}</td><td></td></tr>`;
+          return `<tr class="report-subrow"><td class="report-row-label report-row-sub">${escapeHtml(c.label)}</td>${weekCells}<td>${totalsByChannel[idx]}</td><td></td></tr>`;
         }).join('');
-        return headerRow + channelRows;
+        return targetRow + totalRow + channelRows;
       })
       .join('');
+  }
+
+  // 月次レポートの表に使う項目の並び（入力用・印刷用で共通）を組み立てる
+  function buildReportCategories(month, report, revenueFormat) {
+    const wd = report.weekly_data;
+    const sessionActuals = monthWeekRanges(month).map((r) => (r ? doneInRange(null, r.start, r.end) : 0));
+    return [
+      { key: 'session', label: 'セッション数', kind: 'weekly-target', targets: wd.session.targets, actuals: sessionActuals, actualEditable: false },
+      { key: 'revenue', label: '入金売上', kind: 'weekly-target', targets: wd.revenue.targets, actuals: wd.revenue.weeks, format: revenueFormat },
+      { key: 'new_member', label: '新規獲得', kind: 'channels', targets: wd.new_member.targets, channels: wd.new_member.channels },
+      { key: 'counseling', label: 'カウンセリング対応数', kind: 'channels', targets: wd.counseling.targets, channels: wd.counseling.channels },
+      { key: 'supplement', label: 'サプリメント契約数', kind: 'weekly-target', targets: wd.supplement.targets, actuals: wd.supplement.weeks },
+    ];
+  }
+
+  // 週ごとの見出し（日付入り）を、入力用・印刷用それぞれのテーブルヘッダーに反映する
+  function updateReportWeekHeaders(month, idPrefix) {
+    weekHeaderLabels(month).forEach((label, i) => {
+      const th = $(`#${idPrefix}-${i}`);
+      if (th) th.textContent = label;
+    });
   }
 
   // 手入力フォームへ、読み込んだ月のデータを反映する
   function renderReportForm() {
     const report = state.reportData || defaultMonthlyReport(state.reportMonthKey);
-    const wd = report.weekly_data;
     $('#report-month-input').value = state.reportMonthKey;
     $('#report-mt-retro').value = report.mt_retro || '';
+    updateReportWeekHeaders(state.reportMonthKey, 'report-input-week-th');
 
-    // セッション数の目標は、ダッシュボードの「月間目標」設定と共通の値を使う（実績は記録から自動計算・編集不可）
-    const sessionTarget = monthlyGoalFor(state.reportMonthKey);
-    const sessionWeeks = monthWeekRanges(state.reportMonthKey).map((r) => (r ? doneInRange(null, r.start, r.end) : 0));
-
-    const categories = [
-      { key: 'session', label: 'セッション数', type: 'simple', target: sessionTarget, weeks: sessionWeeks, weeksEditable: false },
-      { key: 'revenue', label: '入金売上（円）', type: 'simple', target: wd.revenue.target, weeks: wd.revenue.weeks },
-      { key: 'new_member', label: '新規獲得', type: 'channels', target: wd.new_member.target, channels: wd.new_member.channels },
-      { key: 'counseling', label: 'カウンセリング対応数', type: 'channels', target: wd.counseling.target, channels: wd.counseling.channels },
-      { key: 'supplement', label: 'サプリメント契約数', type: 'simple', target: wd.supplement.target, weeks: wd.supplement.weeks },
-    ];
+    const categories = buildReportCategories(state.reportMonthKey, report);
     $('#report-input-table-body').innerHTML = reportTableRowsHtml(categories, true);
   }
 
   // 入力欄（DOM）から現在の入力値を集めて、weekly_dataの形に組み立てる
-  // （セッション数の目標欄はweekly_dataではなく店舗設定の月間目標として別途保存するため、ここでは読み飛ばす）
   function collectWeeklyDataFromForm() {
     const wd = defaultWeeklyData();
     document.querySelectorAll('#report-input-table-body .report-cell-input').forEach((input) => {
@@ -1289,8 +1327,8 @@
       const [catKey, kind, a, b] = parts;
       if (!wd[catKey]) return;
       const val = Math.max(0, parseInt(input.value, 10) || 0);
-      if (kind === 'target') {
-        wd[catKey].target = val;
+      if (kind === 'targets') {
+        wd[catKey].targets[Number(a)] = val;
       } else if (kind === 'weeks') {
         wd[catKey].weeks[Number(a)] = val;
       } else if (kind === 'channels') {
@@ -1307,29 +1345,13 @@
     if (!reportEl) return;
     const month = state.reportMonthKey;
     const report = state.reportData || defaultMonthlyReport(month);
-    const wd = report.weekly_data;
 
     $('#report-print-month-label').textContent = monthLabel(month);
     $('#report-print-generated').textContent = `作成日：${todayISO()}`;
     $('#report-print-mt-retro').textContent = report.mt_retro || '（記入なし）';
+    updateReportWeekHeaders(month, 'report-print-week-th');
 
-    const sessionTarget = monthlyGoalFor(month);
-    const sessionWeeks = monthWeekRanges(month).map((r) => (r ? doneInRange(null, r.start, r.end) : 0));
-
-    const printCategories = [
-      { key: 'session', label: 'セッション数', type: 'simple', target: sessionTarget, weeks: sessionWeeks },
-      {
-        key: 'revenue',
-        label: '入金売上',
-        type: 'simple',
-        target: wd.revenue.target,
-        weeks: wd.revenue.weeks,
-        format: (v) => `¥${Number(v).toLocaleString()}`,
-      },
-      { key: 'new_member', label: '新規獲得', type: 'channels', target: wd.new_member.target, channels: wd.new_member.channels },
-      { key: 'counseling', label: 'カウンセリング対応数', type: 'channels', target: wd.counseling.target, channels: wd.counseling.channels },
-      { key: 'supplement', label: 'サプリメント契約数', type: 'simple', target: wd.supplement.target, weeks: wd.supplement.weeks },
-    ];
+    const printCategories = buildReportCategories(month, report, (v) => `¥${Number(v).toLocaleString()}`);
     $('#report-print-table-body').innerHTML = reportTableRowsHtml(printCategories, false);
 
     const thisWeek = currentWeekRange();
@@ -2229,15 +2251,10 @@
     $('#report-save-btn').addEventListener('click', () => {
       const weeklyData = collectWeeklyDataFromForm();
       const mtRetro = $('#report-mt-retro').value;
-      const sessionTargetInput = document.querySelector('[data-field="session.target"]');
-      if (sessionTargetInput) {
-        state.settings.monthlyGoalByMonth[state.reportMonthKey] = Math.max(0, parseInt(sessionTargetInput.value, 10) || 0);
-        saveLocalSettings();
-      }
       withBusyGuard(async () => {
         state.reportData = await saveMonthlyReport(state.reportMonthKey, weeklyData, mtRetro);
         renderReportForm();
-        render();
+        renderReportAutoSections();
         alert('保存しました。');
       });
     });
