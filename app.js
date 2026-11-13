@@ -1260,8 +1260,8 @@
           const actualCells = cat.actuals
             .map((v, i) => (canEditActual ? numInput(`${cat.key}.weeks.${i}`, v) : `<td>${fmt(v)}</td>`))
             .join('');
-          const targetRow = `<tr class="report-target-row"><td class="report-row-label">${escapeHtml(cat.label)}（目標）</td>${targetCells}<td>${fmt(targetTotal)}</td><td></td></tr>`;
-          const actualRow = `<tr><td class="report-row-label">${escapeHtml(cat.label)}（実績）</td>${actualCells}<td>${fmt(actualTotal)}</td><td>${rate}%</td></tr>`;
+          const targetRow = `<tr class="report-target-row"><td class="report-row-label">${escapeHtml(cat.label)}（目標）</td>${targetCells}<td data-total="${cat.key}.target">${fmt(targetTotal)}</td><td></td></tr>`;
+          const actualRow = `<tr><td class="report-row-label">${escapeHtml(cat.label)}（実績）</td>${actualCells}<td data-total="${cat.key}.actual">${fmt(actualTotal)}</td><td data-rate="${cat.key}">${rate}%</td></tr>`;
           return targetRow + actualRow;
         }
 
@@ -1273,14 +1273,14 @@
         const targetCells = cat.targets
           .map((v, i) => (canEditTarget ? numInput(`${cat.key}.targets.${i}`, v) : `<td>${v}</td>`))
           .join('');
-        const targetRow = `<tr class="report-target-row"><td class="report-row-label">${escapeHtml(cat.label)}（目標）</td>${targetCells}<td>${targetTotal}</td><td></td></tr>`;
-        const totalRow = `<tr class="report-group-header"><td class="report-row-label">${escapeHtml(cat.label)}（実績合計）</td><td colspan="5"></td><td>${grandTotal}</td><td>${rate}%</td></tr>`;
+        const targetRow = `<tr class="report-target-row"><td class="report-row-label">${escapeHtml(cat.label)}（目標）</td>${targetCells}<td data-total="${cat.key}.target">${targetTotal}</td><td></td></tr>`;
+        const totalRow = `<tr class="report-group-header"><td class="report-row-label">${escapeHtml(cat.label)}（実績合計）</td><td colspan="5"></td><td data-total="${cat.key}.actual">${grandTotal}</td><td data-rate="${cat.key}">${rate}%</td></tr>`;
         const channelRows = REPORT_CHANNELS.map((c, idx) => {
           const weeks = cat.channels[c.key];
           const weekCells = weeks
             .map((v, i) => (editable ? numInput(`${cat.key}.channels.${c.key}.${i}`, v) : `<td>${v}</td>`))
             .join('');
-          return `<tr class="report-subrow"><td class="report-row-label report-row-sub">${escapeHtml(c.label)}</td>${weekCells}<td>${totalsByChannel[idx]}</td><td></td></tr>`;
+          return `<tr class="report-subrow"><td class="report-row-label report-row-sub">${escapeHtml(c.label)}</td>${weekCells}<td data-total="${cat.key}.channel.${c.key}">${totalsByChannel[idx]}</td><td></td></tr>`;
         }).join('');
         return targetRow + totalRow + channelRows;
       })
@@ -1288,8 +1288,7 @@
   }
 
   // 月次レポートの表に使う項目の並び（入力用・印刷用で共通）を組み立てる
-  function buildReportCategories(month, report, revenueFormat) {
-    const wd = report.weekly_data;
+  function buildReportCategories(month, wd, revenueFormat) {
     const sessionActuals = monthWeekRanges(month).map((r) => (r ? doneInRange(null, r.start, r.end) : 0));
     return [
       { key: 'session', label: 'セッション数', kind: 'weekly-target', targets: wd.session.targets, actuals: sessionActuals, actualEditable: false },
@@ -1315,7 +1314,7 @@
     $('#report-mt-retro').value = report.mt_retro || '';
     updateReportWeekHeaders(state.reportMonthKey, 'report-input-week-th');
 
-    const categories = buildReportCategories(state.reportMonthKey, report);
+    const categories = buildReportCategories(state.reportMonthKey, report.weekly_data);
     $('#report-input-table-body').innerHTML = reportTableRowsHtml(categories, true);
   }
 
@@ -1338,20 +1337,60 @@
     return wd;
   }
 
+  // 入力中（保存前）でも、合計・達成率の表示と印刷用プレビューをその場で更新する。
+  // 入力欄（<input>）そのものは作り直さない（再描画するとiPadでの入力中にフォーカスが外れてしまうため）。
+  function recalcReportInputTotals() {
+    const wd = collectWeeklyDataFromForm();
+    const sumArr = (arr) => arr.reduce((a, b) => a + (Number(b) || 0), 0);
+    const setText = (sel, val) => {
+      const el = $(sel);
+      if (el) el.textContent = val;
+    };
+
+    Object.keys(wd).forEach((key) => {
+      const cat = wd[key];
+      const targetTotal = sumArr(cat.targets);
+      setText(`[data-total="${key}.target"]`, targetTotal);
+
+      let actualTotal;
+      if (key === 'session') {
+        const sessionActuals = monthWeekRanges(state.reportMonthKey).map((r) => (r ? doneInRange(null, r.start, r.end) : 0));
+        actualTotal = sumArr(sessionActuals);
+      } else if (cat.weeks) {
+        actualTotal = sumArr(cat.weeks);
+      } else {
+        actualTotal = 0;
+        REPORT_CHANNELS.forEach((c) => {
+          const chTotal = sumArr(cat.channels[c.key]);
+          actualTotal += chTotal;
+          setText(`[data-total="${key}.channel.${c.key}"]`, chTotal);
+        });
+      }
+      setText(`[data-total="${key}.actual"]`, actualTotal);
+      const rate = targetTotal > 0 ? Math.min(Math.round((actualTotal / targetTotal) * 100), 999) : 0;
+      setText(`[data-rate="${key}"]`, `${rate}%`);
+    });
+
+    renderReportAutoSections(wd, $('#report-mt-retro').value);
+  }
+
   // 自動計算できる部分（セッション数の予実・入力内容の印刷用表示・会員ごとの頻度表）を描画する。
   // 手入力フォームの値には触れないので、通常のrender()から呼んでも安全。
-  function renderReportAutoSections() {
+  // weeklyDataOverride/mtRetroOverrideを渡すと、保存前の入力中の内容をそのまま印刷用プレビューに反映できる。
+  function renderReportAutoSections(weeklyDataOverride, mtRetroOverride) {
     const reportEl = $('#view-report');
     if (!reportEl) return;
     const month = state.reportMonthKey;
     const report = state.reportData || defaultMonthlyReport(month);
+    const wd = weeklyDataOverride || report.weekly_data;
+    const mtRetro = mtRetroOverride != null ? mtRetroOverride : report.mt_retro;
 
     $('#report-print-month-label').textContent = monthLabel(month);
     $('#report-print-generated').textContent = `作成日：${todayISO()}`;
-    $('#report-print-mt-retro').textContent = report.mt_retro || '（記入なし）';
+    $('#report-print-mt-retro').textContent = mtRetro || '（記入なし）';
     updateReportWeekHeaders(month, 'report-print-week-th');
 
-    const printCategories = buildReportCategories(month, report, (v) => `¥${Number(v).toLocaleString()}`);
+    const printCategories = buildReportCategories(month, wd, (v) => `¥${Number(v).toLocaleString()}`);
     $('#report-print-table-body').innerHTML = reportTableRowsHtml(printCategories, false);
 
     const thisWeek = currentWeekRange();
@@ -2246,6 +2285,13 @@
       if (!e.target.value) return;
       state.reportMonthKey = e.target.value;
       withBusyGuard(loadAndRenderReport);
+    });
+
+    // 入力中（保存前）でも合計・達成率・印刷用プレビューをその場で更新する
+    $('#view-report').addEventListener('input', (e) => {
+      if (e.target.classList.contains('report-cell-input') || e.target.id === 'report-mt-retro') {
+        recalcReportInputTotals();
+      }
     });
 
     $('#report-save-btn').addEventListener('click', () => {
