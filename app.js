@@ -508,13 +508,14 @@
   }
 
   // ---------- aggregation ----------
+  // 会員ごとの記録をそのまま数える。ペア・3人組は、Gyms CSV取り込みの時点で
+  // 「Aさん＆Bさん」のような1つの統合会員・1件の記録にまとまっているため、
+  // ここで日時の重複を特別扱いする必要はない（むしろ、たまたま同じ時間に
+  // 別々にマンツーマンを受けている会員同士を誤って1件にまとめてしまう原因になるため行わない）。
   function logCount(memberId, type, predicate) {
-    const entries = state.data.log.filter(
+    return state.data.log.filter(
       (e) => (memberId == null || e.memberId === memberId) && e.type === type && predicate(e.date)
-    );
-    if (memberId != null) return entries.length;
-    // 店舗全体の集計では、同じ日時（ペア・複数人セッション）は1回として数える
-    return new Set(entries.map((e) => `${e.date}_${e.time || ''}`)).size;
+    ).length;
   }
 
   function doneInMonth(memberId, monthKey) {
